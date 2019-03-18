@@ -6,12 +6,14 @@ node_js:
 env:
   - CXX=g++-4.8
 before_script:
+  - set -e
   - npm install grunt-cli -g # for "grunt build"
   - npm install jasmine -g
   - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod +x ./cc-test-reporter
   - ./cc-test-reporter before-build
 script:
+  - set -e
   - npm test
   - npm run test-ui
   - grunt build
