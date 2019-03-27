@@ -19,7 +19,7 @@
   "scope": "/examples/",
   "theme_color": "#428bca",
   "metadata": {
-    "version": 3.0.0,
-    "beta-version":3.0.0
+    "version": "3.0.0",
+    "beta-version": "3.0.0"
   }
 }
