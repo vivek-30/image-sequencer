@@ -65,8 +65,8 @@ self.addEventListener('fetch', function(event) {
 
       var dbPromise = idb.open('cache-db', 1, function(upgradeDb) {
         if (!upgradeDb.objectStoreNames.contains('caches')) {
-          var cachedb = upgradeDb.createObjectStore('cache', {autoIncrement: true});
-          cachedb.createIndex('version', 'version', {unique: false});
+          var cachedb = upgradeDb.createObjectStore('cache', {keyPath: });
+    
         }
       }
       dbPromise.then(function(db) {
