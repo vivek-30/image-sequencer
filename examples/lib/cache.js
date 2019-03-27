@@ -19,9 +19,11 @@ var setupCache = function() {
   if ('serviceWorker' in navigator) {
     if (!('indexedDB' in window)) {
       console.log('This browser doesn\'t support IndexedDB');
-      caches.keys().forEach(function(cacheName){
-        $('#clear-cache').append(" " + cacheName).fadeIn();
-
+      caches.keys().then(function(cacheNames){
+        cacheNames.forEach(function(cacheName){
+          $('#clear-cache').append(" " + cacheName);
+        }
+        $('#clear-cache').fadeIn();
       }
       return;
     }
