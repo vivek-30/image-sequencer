@@ -6,7 +6,8 @@ const meta = JSON.parse(request.responseText).metadata,
       betaVer = meta.betaVersion;
 const version = (window.location.indexOf('beta') == 0) ? betaVer : ver;
  
-const staticCacheName = `image-sequencer-static-v${version}`;
+const staticCacheName = `image-sequencer-static-v${version}`,
+      is
 
 const isVersionNewer = (version, old) => {
     version = version.split('.');
@@ -34,8 +35,9 @@ self.addEventListener('activate', function(e) {
     caches.keys().then(function(cacheNames) {
       return Promise.all(
         cacheNames.filter(function(cacheName){
-          cacheName != staticCacheName;
+          return isVersionNewer(staticCacheName.slice(-5), cacheName.slice(-5));
         }).map(function(cacheName){
+
           return caches.delete(cacheName);
         })
       );
@@ -45,14 +47,18 @@ self.addEventListener('activate', function(e) {
 
 self.addEventListener('fetch', function(event) {
   event.respondWith(
-    caches.open(staticCacheName).then(function(cache) {
-      return cache.match(event.request).then(function (response) {
-        return response || fetch(event.request).then(function(response) {
-          if(event.request.method == "GET")
-            cache.put(event.request, response.clone());
-          return response;
+    if (caches.keys().length < 1){
+      caches.open(staticCacheName).then(function(cache) {
+        return cache.match(event.request).then(function (response) {
+
+          return response || fetch(event.request).then(function(response) {
+            if(event.request.method == "GET")
+              cache.put(event.request, response.clone());
+              return response;
+          });
         });
       });
-    })
+    }
+    else return false;
   );
 });
