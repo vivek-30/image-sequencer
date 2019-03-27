@@ -17,5 +17,9 @@
   "background_color": "#428bca",
   "display": "standalone",
   "scope": "/examples/",
-  "theme_color": "#428bca"
+  "theme_color": "#428bca",
+  "metadata": {
+    "version": 3.0.0,
+    "beta-version":3.0.0
+  }
 }
