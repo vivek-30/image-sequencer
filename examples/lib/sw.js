@@ -58,6 +58,28 @@ self.addEventListener('fetch', function(event) {
           });
         });
       });
+      if (!('indexedDB' in window)) {
+        console.log('This browser doesn\'t support IndexedDB');
+        return;
+      }
+
+      var dbPromise = idb.open('cache-db', 1, function(upgradeDb) {
+        if (!upgradeDb.objectStoreNames.contains('caches')) {
+          var cachedb = upgradeDb.createObjectStore('cache', {autoIncrement: true});
+          cachedb.createIndex('version', 'version', {unique: false});
+        }
+      }
+      dbPromise.then(function(db) {
+        var tx = db.transaction('caches', 'readwrite');
+        var store = tx.objectStore('caches');
+        var item = {
+          name: 'new-cache-availalble',
+          version: staticCacheName,
+          created: new Date().getTime()
+        };
+        store.add(item);
+        return tx.complete;
+      })
     }
     else return false;
   );
