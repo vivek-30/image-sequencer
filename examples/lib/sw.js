@@ -6,8 +6,8 @@ const meta = JSON.parse(request.responseText).metadata,
       betaVer = meta.betaVersion;
 const version = (self.location.toString().indexOf('beta') == 0 || self.location.toString().includes('localhost') || self.location.toString().includes('127.0.0.1')) ? betaVer : ver;
  
-const staticCacheName = `image-sequencer-static-v${version}`,
-      is
+const staticCacheName = `image-sequencer-static-v${version}`;
+
 
 const isVersionNewer = (version, old) => {
     version = version.split('.');
