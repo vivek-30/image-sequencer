@@ -17,8 +17,8 @@ var setupCache = function() {
   }
 
   if ('serviceWorker' in navigator) {
-    if (!('indexedDB' in window)) {
-      console.log('This browser doesn\'t support IndexedDB');
+    if (!('indexedDB' in window) || window.location.toString().includes('localhost') || window.location.toString().includes('127.0.0.1')) {
+      console.log('No Cache Tracking');
       caches.keys().then(function(cacheNames){
         cacheNames.forEach(function(cacheName){
           $('#clear-cache').append(" " + cacheName);
