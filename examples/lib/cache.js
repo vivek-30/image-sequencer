@@ -33,7 +33,7 @@ var setupCache = function() {
     }).then(function(out) {
       if (out == undefined) return;
       else {
-        $('#clear-cache').append(`New Cache Available ${out.version}`);
+        $('#clear-cache').text(`New Version Available ${out.version}`).fadeIn();
         var dbPromise = idb.open('cache-db', 1);
         dbPromise.then(function(db) {
           var tx = db.transaction('caches', 'readwrite');
