@@ -256,3 +256,7 @@ a.name-header{
     align-content: center;
     justify-content: center;
 }
+
+#clear-cache {
+    display: none;
+}
