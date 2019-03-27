@@ -1,4 +1,12 @@
-const staticCacheName = 'image-sequencer-static-v3';
+const request = new XMLHttpRequest();
+request.open("GET", "../manifest.json", false);
+request.send(null);
+const meta = JSON.parse(request.responseText).metadata,
+      ver = meta.version,
+      betaVer = meta.betaVersion;
+const version = (window.location.indexOf('beta') == 0) ? betaVer : ver;
+ 
+const staticCacheName = `image-sequencer-static-v${version}`;
 
 self.addEventListener('install', event => {
   console.log('Attempting to install service worker');
