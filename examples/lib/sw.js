@@ -8,6 +8,22 @@ const version = (window.location.indexOf('beta') == 0) ? betaVer : ver;
  
 const staticCacheName = `image-sequencer-static-v${version}`;
 
+const isVersionNewer = (version, old) => {
+    version = version.split('.');
+    var major = version[0],
+        minor = version[1],
+        patch = version[2];
+    old = old.split('.');
+    var oldMajor = old[0],
+        oldMinor = old[1],
+        oldPatch = old[2];
+    
+    if (major > oldMajor) return true
+    else if (minor > oldMinor) return true
+    else if (patch > oldPatch) return true
+    else return false
+}
+
 self.addEventListener('install', event => {
   console.log('Attempting to install service worker');
 });
@@ -18,8 +34,7 @@ self.addEventListener('activate', function(e) {
     caches.keys().then(function(cacheNames) {
       return Promise.all(
         cacheNames.filter(function(cacheName){
-          return cacheName.startsWith('image-sequencer-') &&
-                 cacheName != staticCacheName;
+          cacheName != staticCacheName;
         }).map(function(cacheName){
           return caches.delete(cacheName);
         })
