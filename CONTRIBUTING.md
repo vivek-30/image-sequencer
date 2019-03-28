@@ -11,6 +11,7 @@ Most contribution (we imagine) would be in the form of API-compatible modules, w
 * [Contributing Modules](#contributing-modules)
 * [Info File](#info-file)
 * [Ideas](#Contribution-ideas)
+* [User Preferences](#user-preferences)
 * [Grunt Tasks](#grunt-tasks)
 
 ****
@@ -349,6 +350,39 @@ module.exports =
         }
     });
 ```
+## User Preferences
+The user preferences API can be used for adding, reading, updating and deleting user preferences in the browser using **indexedDB** API.
+* File Path: [/src/ui/userPrefs.js](https://github.com/publiclab/image-sequencer/blob/main/src/ui/userPrefs.js)
+### Usage
+```js
+var userPrefs = require('/path/to/userPrefs')(options);
+userPrefs.addPref('user-name', {name: 'user'}, () => {
+  userPrefs.new().getPref('user-name', (pref) => {
+    console.log(pref.name); // user
+    userPrefs.new().deletePref('user-name', () => {console.log('deleted')}) // preference deleted
+    
+  })
+})
+```
+### Return Value
+A new `userPreferenceManager` object is returned by the function.
+#### Properties
+The `userPreferenceManager` object has the following properties.
+- `dbName`: Name of the database the user preferences are stored in.
+- `storeName`: The object store in the database where the user preferences are stored.
+#### Options
+The function accepts a single object called `options` as an argument which has the following properties.
+* `dbName`: Name of a custom database. Default is `user-prefs`.
+* `storeName`: Name of a custom objectStore. Default is `user-prefs`.
+#### Methods
+The following methods are available on the returned object.
+* `addPref(prefName, preference, callback)`: Adds a preference with the name `prefName` and value `preference`. `preference` is an object containing any key but `preference`. `callback` is a function executed once a preference as been added.
+* `deletePref(prefName, callback)`: Deletes he preference with the name `prefName` if it exists. `callback` is executed once the preference is deleted.
+* `updatePref(prefName, preference, callback)`: Updates the value of the preference with the name `prefName` to `preference`.
+* `getPref(prefName, callback)`: Gets the preference with the name `prefName`. The value is passed to `callback` which is executed once the preference is fetched. If the requested preference doesn't exist then the value passed to `callback` will be `undefined`.
+* `new()`: Returns a new `userPreferenceManager` object with the same options as before. This function can be used if the original object is to be reused as the `userPreferenceManager` object can only be used once.
+
+
 
 ## Grunt Tasks
 This repository has different grunt tasks for different uses. The source code is in the [Gruntfile](https://github.com/publiclab/image-sequencer/blob/main/Gruntfile.js).
