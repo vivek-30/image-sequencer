@@ -356,6 +356,11 @@ The user preferences API can be used for adding, reading, updating and deleting 
 ### Usage
 ```js
 var userPrefs = require('/path/to/userPrefs')(options);
+if (userPrefs.error) {
+  console.log(error);
+  return;
+}
+
 userPrefs.addPref('user-name', {name: 'user'}, () => {
   userPrefs.new().getPref('user-name', (pref) => {
     console.log(pref.name); // user
@@ -366,6 +371,7 @@ userPrefs.addPref('user-name', {name: 'user'}, () => {
 ```
 ### Return Value
 A new `userPreferenceManager` object is returned by the function.
+###### note: If an error occured or if **indexedDB** is not supported by he browser, the return value will be an object with a string `error` property.
 #### Properties
 The `userPreferenceManager` object has the following properties.
 - `dbName`: Name of the database the user preferences are stored in.
