@@ -36,7 +36,6 @@
     "node_shared_libuv": "false",
     "node_shared_openssl": "false",
     "node_shared_zlib": "false",
-    "node_tag": "",
     "node_use_bundled_v8": "true",
     "node_use_dtrace": "true",
     "node_use_etw": "false",
