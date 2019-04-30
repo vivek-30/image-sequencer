@@ -2,7 +2,7 @@ Image Sequencer
 ====
 
 
-[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) ![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)
+[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) [![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)](https://codecov.io/gh/publiclab/image-sequencer)
 
 - **Latest Stable Demo**: https://sequencer.publiclab.org
 - **Latest Beta Demo**: https://beta.sequencer.publiclab.org
@@ -432,7 +432,7 @@ Image sequencer supports stringifying a sequence which is appended to the url an
 channel{channel:green},invert{}
 ```
 
-Sequencer also supports the use of `()` in place of `{}` for backward compatibility with older links. (This syntax is deprecated and should be avoided as far as possible)
+The use of `()` in place of `{}` for backward compatibility with older links is now **deprecated**. (There is no longer support for the following syntax, and should be avoided)
 ```
 channel(channel:green),invert()
 ```
