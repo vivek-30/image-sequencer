@@ -69112,7 +69112,7 @@ module.exports = function(steps, modulesInfo, addSteps, copy) {
     stepSettings = stepSettings.split('|').reduce(function formatSettings(accumulator, current, i) {
       var settingName = current.substr(0, current.indexOf(':')),
         settingValue = current.substr(current.indexOf(':') + 1);
-      settingValue = settingValue.replace(/^\(/, '').replace(/\)$/, ''); // strip () at start/end
+      settingValue = settingValue.replace(/^\(/, ''); // strip () at start/end
       settingValue = settingValue.replace(/^\{/, '').replace(/\}$/, ''); // strip {} at start/end
       settingValue = decodeURIComponent(settingValue);
       current = [
@@ -72044,42 +72044,35 @@ module.exports={
 }
 
 },{}],272:[function(require,module,exports){
-module.exports = exports = function(pixels, options,priorstep){
+module.exports = exports = function(pixels, options){
     var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
 
-    options.color = options.color || defaults.color;
-    options.x = options.x || defaults.x;
-    options.y = options.y || defaults.y;
+    options.x = Number(options.x) || defaults.x;
+    options.y = Number(options.y) || defaults.y;
+    color = options.color || defaults.color;
+    color = color.split(" ");
 
-        var img = $(priorstep.imgElement);
-        if(Object.keys(img).length === 0){
-            img = $(priorstep.options.step.imgElement);
-        }
-        var canvas = document.createElement("canvas");
-        canvas.width = pixels.shape[0]; //img.width();
-        canvas.height = pixels.shape[1]; //img.height();
-        var ctx = canvas.getContext('2d');
-        ctx.drawImage(img[0], 0, 0);
-        var p=2;
-        function drawBoard(){
-            for (var x = 0; x <= canvas.width; x+=options.x) {
-                ctx.moveTo(0.5 + x + p, p);
-                ctx.lineTo(0.5 + x + p, canvas.height + p);
+        for(var x = 0; x < pixels.shape[0]; x+=options.x){
+            for(var y = 0 ; y < pixels.shape[1]; y++){
+                pixels.set(x, y, 0, color[0]);
+                pixels.set(x, y, 1, color[1]);
+                pixels.set(x, y, 2, color[2]);
+                pixels.set(x, y, 3, color[3]);
             }
-            for (var y = 0; y <= canvas.height; y+=options.y) {
-                ctx.moveTo(p, 0.5 + y + p);
-                ctx.lineTo(canvas.width + p, 0.5 + y + p);
-            }
-            ctx.strokeStyle = options.color;
-            ctx.stroke();
         }
-        
-        drawBoard();
+    
+        for(var y = 0; y < pixels.shape[1]; y+=options.y){
+            for(var x = 0 ; x < pixels.shape[0]; x++){
+                pixels.set(x, y, 0, color[0]);
+                pixels.set(x, y, 1, color[1]);
+                pixels.set(x, y, 2, color[2]);
+                pixels.set(x, y, 3, color[3]);
+            }
+        } 
 
-    var myImageData = ctx.getImageData(0,0,canvas.width,canvas.height);
-    pixels.data = myImageData.data
     return pixels;
 }
+
 },{"./../../util/getDefaults.js":335,"./info.json":275}],273:[function(require,module,exports){
 
 module.exports = function GridOverlay(options,UI) {
@@ -72092,16 +72085,9 @@ module.exports = function GridOverlay(options,UI) {
     progressObj.overrideFlag = true;
 
     var step = this;
-    if (!options.step.inBrowser) { // This module is only for browser
-     this.output = input;
-     callback();
-   }
-   else{
-    var priorStep = this.getStep(-1); // get the previous step to add text onto it.
-
+    
     function extraManipulation(pixels) {
-     //if (options.step.inBrowser) 
-     pixels = require('./GridOverlay')(pixels, options,priorStep);
+     pixels = require('./GridOverlay')(pixels, options);
      return pixels
    }
 
@@ -72121,7 +72107,7 @@ module.exports = function GridOverlay(options,UI) {
       callback: callback
     });
 
-  }
+  
  }
 
   return {
@@ -72149,20 +72135,11 @@ module.exports={
             "desc": "Y-position (measured from top) from where grid starts",
             "default": 100
         },
-        "color": {
-            "type": "select",
-            "desc": "Select the color for the grid.",
-            "default": "black",
-            "values": [
-                "black",
-                "blue",
-                "green",
-                "red",
-                "white",
-                "pink",
-                "orange"
-            ]
-        }
+        "color":{
+            "type": "string",
+            "desc": "RGBA values separated by a space",
+            "default": "0 0 0 255"
+          }
     },
     "only": "browser" 
 }
@@ -74158,7 +74135,7 @@ module.exports = function runInBrowserContext(input, callback, step, options) {
 
     var obj = { input: input, modOptions: minOptions }
 
-    puppeteer.launch().then(function(browser) {
+    puppeteer.launch({headless: true, args:['--no-sandbox', '--disable-setuid-sandbox']}).then(function(browser) {
         browser.newPage().then(page => {
             /* Maybe there is a better way to this, loading the page coz localstorage API
             is not available otherwise */
@@ -74184,6 +74161,7 @@ module.exports = function runInBrowserContext(input, callback, step, options) {
         });
     });
 }
+
 }).call(this,"/src/modules/_nomodule")
 },{"lodash":76,"path":96}],330:[function(require,module,exports){
 // special module to load an image into the start of the sequence; used in the HTML UI
