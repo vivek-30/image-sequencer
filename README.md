@@ -2,7 +2,7 @@ Image Sequencer
 ====
 
 
-[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) ![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)
+[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) [![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)](https://codecov.io/gh/publiclab/image-sequencer)
 
 - **Latest Stable Demo**: https://sequencer.publiclab.org
 - **Latest Beta Demo**: https://beta.sequencer.publiclab.org
@@ -201,15 +201,17 @@ var sequencer = ImageSequencer();
 ### Loading an Image into the Sequencer
 
 The `loadImage` method is used to load an image into the sequencer. It accepts
-a name and an image. The method also accepts an optional callback.
+an image `src`, either a URL or a data-url. The method also accepts an optional callback.
 
 ```js
-sequencer.loadImage(image_src,optional_callback);
+sequencer.loadImage(image_src, optional_callback);
 ```
+
 On `Node.js` the `image_src` may be a DataURI or a local path or a URL.
 
 On browsers, it may be a DatURI, a local image or a URL (Unless this violates
 CORS Restrictions). To sum up, these are accepted:
+
 * Images in the same domain (or directory - for a local implementation)
 * CORS-Proof images in another domain.
 * DataURLs
@@ -219,7 +221,7 @@ The callback is called within the scope of a sequencer. For example:
 (addSteps is defined later)
 
 ```js
-sequencer.loadImage('SRC',function(){
+sequencer.loadImage('SRC', function(){
   this.addSteps('module-name');
 });
 ```
@@ -430,7 +432,7 @@ Image sequencer supports stringifying a sequence which is appended to the url an
 channel{channel:green},invert{}
 ```
 
-Sequencer also supports the use of `()` in place of `{}` for backward compatibility with older links. (This syntax is deprecated and should be avoided as far as possible)
+The use of `()` in place of `{}` for backward compatibility with older links is now **deprecated**. (There is no longer support for the following syntax, and should be avoided)
 ```
 channel(channel:green),invert()
 ```
