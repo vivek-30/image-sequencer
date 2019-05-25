@@ -85200,10 +85200,10 @@ module.exports = function canvasResize(options, UI) {
 
   function draw(input, callback, progressObj) {
 
-    options.width = options.width || defaults.width;
-    options.height = options.height || defaults.height;
-    options.x = options.x || defaults.x;
-    options.y = options.y || defaults.y;
+    options.width = parseInt(options.width || defaults.width);
+    options.height = parseInt(options.height || defaults.height);
+    options.x = parseInt(options.x || defaults.x);
+    options.y = parseInt(options.y || defaults.y);
 
     progressObj.stop(true);
     progressObj.overrideFlag = true;
@@ -85211,7 +85211,6 @@ module.exports = function canvasResize(options, UI) {
     var step = this;
 
     function extraManipulation(pixels) {
-
       let newPixels = require('ndarray')(new Uint8Array(4 * options.width * options.height).fill(255), [options.width, options.height, 4]);
       let iMax = options.width - options.x,
         jMax = options.height - options.y;
@@ -87750,7 +87749,7 @@ module.exports={
 module.exports = function ImportImageModule(options, UI) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
-  options.imageUrl = options.inBrowser ? (options.url || defaults.url) : './examples/images/monarch.png';
+  options.imageUrl = options.inBrowser ? (options.url || defaults.url) : (options.url || './examples/images/monarch.png');
 
   var output;
 
