@@ -85211,7 +85211,7 @@ module.exports = function canvasResize(options, UI) {
     var step = this;
 
     function extraManipulation(pixels) {
-      let newPixels = require('ndarray')(new Uint8Array(4 * options.width * options.height).fill(255), [options.width, options.height, 4]);
+      let newPixels = require('ndarray')(new Uint8Array(4 * options.width * options.height).fill(0), [options.width, options.height, 4]);
       let iMax = options.width - options.x,
         jMax = options.height - options.y;
       for (let i = 0; i < iMax && i < pixels.shape[0]; i++) {
@@ -88011,7 +88011,7 @@ module.exports = function Dynamic(options, UI, util) {
   // This function is called on every draw.
   function draw(input, callback, progressObj) {
 
-    options.offset = options.offset || -2;
+    options.offset = parseInt(options.offset) || -2;
 
     progressObj.stop(true);
     progressObj.overrideFlag = true;
@@ -88025,7 +88025,7 @@ module.exports = function Dynamic(options, UI, util) {
       src: input.src,
       x: { valInp: options.x, type: 'horizontal' },
       y: { valInp: options.y, type: 'vertical' },
-    }, function (options, input) {
+    }, function(options, input) {
       options.x = parseInt(input.x.valInp);
       options.y = parseInt(input.y.valInp);
     });
@@ -88036,7 +88036,7 @@ module.exports = function Dynamic(options, UI, util) {
 
     var getPixels = require('get-pixels');
 
-    getPixels(input.src, function (err, pixels) {
+    getPixels(input.src, function(err, pixels) {
       options.secondImagePixels = pixels;
 
       function changePixel(r1, g1, b1, a1, x, y) {
@@ -88044,14 +88044,14 @@ module.exports = function Dynamic(options, UI, util) {
         // overlay
         var p = options.secondImagePixels;
         if (x >= options.x
-                    && x < p.shape[0]
-                    && y >= options.y
-                    && y < p.shape[1])
+          && x - options.x < p.shape[0]
+          && y >= options.y
+          && y - options.y < p.shape[1])
           return [
-            p.get(x, y, 0),
-            p.get(x, y, 1),
-            p.get(x, y, 2),
-            p.get(x, y, 3)
+            p.get(x - options.x, y - options.y, 0),
+            p.get(x - options.x, y - options.y, 1),
+            p.get(x - options.x, y - options.y, 2),
+            p.get(x - options.x, y - options.y, 3)
           ];
         else
           return [r1, g1, b1, a1];
