@@ -11148,340 +11148,9 @@ module.exports = ret;
 },{"./es5":13}]},{},[4])(4)
 });                    ;if (typeof window !== 'undefined' && window !== null) {                               window.P = window.Promise;                                                     } else if (typeof self !== 'undefined' && self !== null) {                             self.P = self.Promise;                                                         }
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
-},{"_process":139,"timers":193}],4:[function(require,module,exports){
+},{"_process":136,"timers":190}],4:[function(require,module,exports){
 
 },{}],5:[function(require,module,exports){
-(function (process){
-var tty = require('tty');
-var encode = require('./lib/encode');
-var Stream = require('stream').Stream;
-
-var exports = module.exports = function () {
-    var input = null;
-    function setInput (s) {
-        if (input) throw new Error('multiple inputs specified')
-        else input = s
-    }
-    
-    var output = null;
-    function setOutput (s) {
-        if (output) throw new Error('multiple outputs specified')
-        else output = s
-    }
-    
-    for (var i = 0; i < arguments.length; i++) {
-        var arg = arguments[i];
-        if (!arg) continue;
-        if (arg.readable) setInput(arg)
-        else if (arg.stdin || arg.input) setInput(arg.stdin || arg.input)
-        
-        if (arg.writable) setOutput(arg)
-        else if (arg.stdout || arg.output) setOutput(arg.stdout || arg.output)
-        
-    }
-    
-    if (input && typeof input.fd === 'number' && tty.isatty(input.fd)) {
-        if (process.stdin.setRawMode) {
-            process.stdin.setRawMode(true);
-        }
-        else tty.setRawMode(true);
-    }
-    
-    var charm = new Charm;
-    if (input) {
-        input.pipe(charm);
-    }
-    
-    if (output) {
-        charm.pipe(output);
-    }
-    
-    charm.once('^C', process.exit);
-    charm.once('end', function () {
-      if (input) {
-          if (typeof input.fd === 'number' && tty.isatty(input.fd)) {
-            if (process.stdin.setRawMode) {
-                process.stdin.setRawMode(false);
-            }
-            else tty.setRawMode(false);
-          }
-          input.destroy();
-      }
-    });
-
-    return charm;
-};
-
-var Charm = exports.Charm = function Charm () {
-    this.writable = true;
-    this.readable = true;
-    this.pending = [];
-}
-
-Charm.prototype = new Stream;
-
-Charm.prototype.write = function (buf) {
-    var self = this;
-    
-    if (self.pending.length) {
-        var codes = extractCodes(buf);
-        var matched = false;
-        
-        for (var i = 0; i < codes.length; i++) {
-            for (var j = 0; j < self.pending.length; j++) {
-                var cb = self.pending[j];
-                if (cb(codes[i])) {
-                    matched = true;
-                    self.pending.splice(j, 1);
-                    break;
-                }
-            }
-        }
-        
-        if (matched) return;
-    }
-    
-    if (buf.length === 1) {
-        if (buf[0] === 3) self.emit('^C');
-        if (buf[0] === 4) self.emit('^D');
-    }
-    
-    self.emit('data', buf);
-    
-    return self;
-};
-
-
-Charm.prototype.destroy = function () {
-    this.end();
-};
-
-Charm.prototype.end = function (buf) {
-    if (buf) this.write(buf);
-    this.emit('end');
-};
-
-Charm.prototype.reset = function (cb) {
-    this.write(encode('c'));
-    return this;
-};
-
-Charm.prototype.position = function (x, y) {
-    // get/set absolute coordinates
-    if (typeof x === 'function') {
-        var cb = x;
-        this.pending.push(function (buf) {
-            if (buf[0] === 27 && buf[1] === encode.ord('[')
-            && buf[buf.length-1] === encode.ord('R')) {
-                var pos = buf.toString()
-                    .slice(2,-1)
-                    .split(';')
-                    .map(Number)
-                ;
-                cb(pos[1], pos[0]);
-                return true;
-            }
-        });
-        this.write(encode('[6n'));
-    }
-    else {
-        this.write(encode(
-            '[' + Math.floor(y) + ';' + Math.floor(x) + 'f'
-        ));
-    }
-    return this;
-};
-
-Charm.prototype.move = function (x, y) {
-    // set relative coordinates
-    var bufs = [];
-    
-    if (y < 0) this.up(-y)
-    else if (y > 0) this.down(y)
-    
-    if (x > 0) this.right(x)
-    else if (x < 0) this.left(-x)
-    
-    return this;
-};
-
-Charm.prototype.up = function (y) {
-    if (y === undefined) y = 1;
-    this.write(encode('[' + Math.floor(y) + 'A'));
-    return this;
-};
-
-Charm.prototype.down = function (y) {
-    if (y === undefined) y = 1;
-    this.write(encode('[' + Math.floor(y) + 'B'));
-    return this;
-};
-
-Charm.prototype.right = function (x) {
-    if (x === undefined) x = 1;
-    this.write(encode('[' + Math.floor(x) + 'C'));
-    return this;
-};
-
-Charm.prototype.left = function (x) {
-    if (x === undefined) x = 1;
-    this.write(encode('[' + Math.floor(x) + 'D'));
-    return this;
-};
-
-Charm.prototype.column = function (x) {
-    this.write(encode('[' + Math.floor(x) + 'G'));
-    return this;
-};
-
-Charm.prototype.push = function (withAttributes) {
-    this.write(encode(withAttributes ? '7' : '[s'));
-    return this;
-};
-
-Charm.prototype.pop = function (withAttributes) {
-    this.write(encode(withAttributes ? '8' : '[u'));
-    return this;
-};
-
-Charm.prototype.erase = function (s) {
-    if (s === 'end' || s === '$') {
-        this.write(encode('[K'));
-    }
-    else if (s === 'start' || s === '^') {
-        this.write(encode('[1K'));
-    }
-    else if (s === 'line') {
-        this.write(encode('[2K'));
-    }
-    else if (s === 'down') {
-        this.write(encode('[J'));
-    }
-    else if (s === 'up') {
-        this.write(encode('[1J'));
-    }
-    else if (s === 'screen') {
-        this.write(encode('[1J'));
-    }
-    else {
-        this.emit('error', new Error('Unknown erase type: ' + s));
-    }
-    return this;
-};
-
-Charm.prototype.display = function (attr) {
-    var c = {
-        reset : 0,
-        bright : 1,
-        dim : 2,
-        underscore : 4,
-        blink : 5,
-        reverse : 7,
-        hidden : 8
-    }[attr];
-    if (c === undefined) {
-        this.emit('error', new Error('Unknown attribute: ' + attr));
-    }
-    this.write(encode('[' + c + 'm'));
-    return this;
-};
-
-Charm.prototype.foreground = function (color) {
-    if (typeof color === 'number') {
-        if (color < 0 || color >= 256) {
-            this.emit('error', new Error('Color out of range: ' + color));
-        }
-        this.write(encode('[38;5;' + color + 'm'));
-    }
-    else {
-        var c = {
-            black : 30,
-            red : 31,
-            green : 32,
-            yellow : 33,
-            blue : 34,
-            magenta : 35,
-            cyan : 36,
-            white : 37
-        }[color.toLowerCase()];
-        
-        if (!c) this.emit('error', new Error('Unknown color: ' + color));
-        this.write(encode('[' + c + 'm'));
-    }
-    return this;
-};
-
-Charm.prototype.background = function (color) {
-    if (typeof color === 'number') {
-        if (color < 0 || color >= 256) {
-            this.emit('error', new Error('Color out of range: ' + color));
-        }
-        this.write(encode('[48;5;' + color + 'm'));
-    }
-    else {
-        var c = {
-          black : 40,
-          red : 41,
-          green : 42,
-          yellow : 43,
-          blue : 44,
-          magenta : 45,
-          cyan : 46,
-          white : 47
-        }[color.toLowerCase()];
-        
-        if (!c) this.emit('error', new Error('Unknown color: ' + color));
-        this.write(encode('[' + c + 'm'));
-    }
-    return this;
-};
-
-Charm.prototype.cursor = function (visible) {
-    this.write(encode(visible ? '[?25h' : '[?25l'));
-    return this;
-};
-
-var extractCodes = exports.extractCodes = function (buf) {
-    var codes = [];
-    var start = -1;
-    
-    for (var i = 0; i < buf.length; i++) {
-        if (buf[i] === 27) {
-            if (start >= 0) codes.push(buf.slice(start, i));
-            start = i;
-        }
-        else if (start >= 0 && i === buf.length - 1) {
-            codes.push(buf.slice(start));
-        }
-    }
-    
-    return codes;
-}
-
-}).call(this,require('_process'))
-},{"./lib/encode":6,"_process":139,"stream":190,"tty":194}],6:[function(require,module,exports){
-(function (Buffer){
-var encode = module.exports = function (xs) {
-    function bytes (s) {
-        if (typeof s === 'string') {
-            return s.split('').map(ord);
-        }
-        else if (Array.isArray(s)) {
-            return s.reduce(function (acc, c) {
-                return acc.concat(bytes(c));
-            }, []);
-        }
-    }
-    
-    return new Buffer([ 0x1b ].concat(bytes(xs)));
-};
-
-var ord = encode.ord = function ord (c) {
-    return c.charCodeAt(0)
-};
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":73}],7:[function(require,module,exports){
 (function (Buffer){
 /**!
  * contentstream - index.js
@@ -11530,7 +11199,7 @@ ContentStream.prototype._read = function (n) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73,"readable-stream":13,"util":200}],8:[function(require,module,exports){
+},{"buffer":71,"readable-stream":11,"util":196}],6:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -11623,7 +11292,7 @@ function forEach (xs, f) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_readable":10,"./_stream_writable":12,"_process":139,"core-util-is":14,"inherits":96}],9:[function(require,module,exports){
+},{"./_stream_readable":8,"./_stream_writable":10,"_process":136,"core-util-is":12,"inherits":94}],7:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -11671,7 +11340,7 @@ PassThrough.prototype._transform = function(chunk, encoding, cb) {
   cb(null, chunk);
 };
 
-},{"./_stream_transform":11,"core-util-is":14,"inherits":96}],10:[function(require,module,exports){
+},{"./_stream_transform":9,"core-util-is":12,"inherits":94}],8:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -12657,7 +12326,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"_process":139,"buffer":73,"core-util-is":14,"events":74,"inherits":96,"isarray":99,"stream":190,"string_decoder/":191}],11:[function(require,module,exports){
+},{"_process":136,"buffer":71,"core-util-is":12,"events":72,"inherits":94,"isarray":97,"stream":187,"string_decoder/":188}],9:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -12869,7 +12538,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":8,"core-util-is":14,"inherits":96}],12:[function(require,module,exports){
+},{"./_stream_duplex":6,"core-util-is":12,"inherits":94}],10:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -13259,7 +12928,7 @@ function endWritable(stream, state, cb) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":8,"_process":139,"buffer":73,"core-util-is":14,"inherits":96,"stream":190}],13:[function(require,module,exports){
+},{"./_stream_duplex":6,"_process":136,"buffer":71,"core-util-is":12,"inherits":94,"stream":187}],11:[function(require,module,exports){
 (function (process){
 var Stream = require('stream'); // hack to fix a circular dependency issue when used with browserify
 exports = module.exports = require('./lib/_stream_readable.js');
@@ -13274,7 +12943,7 @@ if (!process.browser && process.env.READABLE_STREAM === 'disable') {
 }
 
 }).call(this,require('_process'))
-},{"./lib/_stream_duplex.js":8,"./lib/_stream_passthrough.js":9,"./lib/_stream_readable.js":10,"./lib/_stream_transform.js":11,"./lib/_stream_writable.js":12,"_process":139,"stream":190}],14:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":6,"./lib/_stream_passthrough.js":7,"./lib/_stream_readable.js":8,"./lib/_stream_transform.js":9,"./lib/_stream_writable.js":10,"_process":136,"stream":187}],12:[function(require,module,exports){
 (function (Buffer){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -13385,7 +13054,7 @@ function objectToString(o) {
 }
 
 }).call(this,{"isBuffer":require("../../is-buffer/index.js")})
-},{"../../is-buffer/index.js":98}],15:[function(require,module,exports){
+},{"../../is-buffer/index.js":96}],13:[function(require,module,exports){
 "use strict"
 
 var createThunk = require("./lib/thunk.js")
@@ -13496,7 +13165,7 @@ function compileCwise(user_args) {
 
 module.exports = compileCwise
 
-},{"./lib/thunk.js":17}],16:[function(require,module,exports){
+},{"./lib/thunk.js":15}],14:[function(require,module,exports){
 "use strict"
 
 var uniq = require("uniq")
@@ -13856,7 +13525,7 @@ function generateCWiseOp(proc, typesig) {
 }
 module.exports = generateCWiseOp
 
-},{"uniq":196}],17:[function(require,module,exports){
+},{"uniq":192}],15:[function(require,module,exports){
 "use strict"
 
 // The function below is called when constructing a cwise function object, and does the following:
@@ -13944,7 +13613,7 @@ function createThunk(proc) {
 
 module.exports = createThunk
 
-},{"./compile.js":16}],18:[function(require,module,exports){
+},{"./compile.js":14}],16:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -14018,7 +13687,7 @@ function dataUriToBuffer(uri) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],19:[function(require,module,exports){
+},{"buffer":71}],17:[function(require,module,exports){
 'use strict';
 
 /******************************************************************************
@@ -14185,7 +13854,7 @@ if (typeof module !== 'undefined') {
   module.exports = dijkstra;
 }
 
-},{}],20:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 var FisheyeGl = function FisheyeGl(options){
 
   // Defaults:
@@ -14493,7 +14162,7 @@ if (typeof(document) != 'undefined')
 else
   module.exports = FisheyeGl;
 
-},{"./shaders":21}],21:[function(require,module,exports){
+},{"./shaders":19}],19:[function(require,module,exports){
 module.exports = {
   fragment: require('./shaders/fragment.glfs'),
   fragment2: require('./shaders/fragment2.glfs'),
@@ -14503,7 +14172,7 @@ module.exports = {
   vertex: require('./shaders/vertex.glvs')
 };
 
-},{"./shaders/fragment.glfs":22,"./shaders/fragment2.glfs":23,"./shaders/fragment3.glfs":24,"./shaders/method1.glfs":25,"./shaders/method2.glfs":26,"./shaders/vertex.glvs":27}],22:[function(require,module,exports){
+},{"./shaders/fragment.glfs":20,"./shaders/fragment2.glfs":21,"./shaders/fragment3.glfs":22,"./shaders/method1.glfs":23,"./shaders/method2.glfs":24,"./shaders/vertex.glvs":25}],20:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14531,7 +14200,7 @@ void main(void){\n\
 	gl_FragColor = texture;\n\
 }\n\
 ";
-},{}],23:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14564,7 +14233,7 @@ void main(void){\n\
 	gl_FragColor = texture;\n\
 }\n\
 ";
-},{}],24:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14595,7 +14264,7 @@ void main(void){\n\
 	gl_FragColor = texture;\n\
 }\n\
 ";
-},{}],25:[function(require,module,exports){
+},{}],23:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14627,7 +14296,7 @@ void main(void){\n\
 	gl_FragColor = texture;\n\
 }\n\
 ";
-},{}],26:[function(require,module,exports){
+},{}],24:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14659,7 +14328,7 @@ void main(void){\n\
 	gl_FragColor = texture;\n\
 }\n\
 ";
-},{}],27:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 module.exports = "\
 #ifdef GL_ES\n\
 precision highp float;\n\
@@ -14674,7 +14343,7 @@ void main(void){\n\
 	gl_Position = vec4(vPosition,1.0);\n\
 }\n\
 ";
-},{}],28:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 (function (Buffer,process){
 'use strict'
 
@@ -14812,7 +14481,7 @@ module.exports = function getPixels(url, type, cb) {
   }
 }
 }).call(this,{"isBuffer":require("../is-buffer/index.js")},require('_process'))
-},{"../is-buffer/index.js":98,"_process":139,"data-uri-to-buffer":29,"ndarray":107,"ndarray-pack":105,"omggif":115,"path":117,"through":192}],29:[function(require,module,exports){
+},{"../is-buffer/index.js":96,"_process":136,"data-uri-to-buffer":27,"ndarray":105,"ndarray-pack":103,"omggif":113,"path":114,"through":189}],27:[function(require,module,exports){
 (function (Buffer){
 
 /**
@@ -14870,7 +14539,7 @@ function dataUriToBuffer (uri) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],30:[function(require,module,exports){
+},{"buffer":71}],28:[function(require,module,exports){
 (function (Buffer){
 /*
   GIFEncoder.js
@@ -15343,7 +15012,7 @@ GIFEncoder.ByteCapacitor = ByteCapacitor;
 module.exports = GIFEncoder;
 
 }).call(this,require("buffer").Buffer)
-},{"./LZWEncoder.js":31,"./TypedNeuQuant.js":32,"assert":66,"buffer":73,"events":74,"readable-stream":38,"util":200}],31:[function(require,module,exports){
+},{"./LZWEncoder.js":29,"./TypedNeuQuant.js":30,"assert":64,"buffer":71,"events":72,"readable-stream":36,"util":196}],29:[function(require,module,exports){
 /*
   LZWEncoder.js
 
@@ -15557,7 +15226,7 @@ function LZWEncoder(width, height, pixels, colorDepth) {
 
 module.exports = LZWEncoder;
 
-},{}],32:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 /* NeuQuant Neural-Net Quantization Algorithm
  * ------------------------------------------
  *
@@ -15990,11 +15659,11 @@ function NeuQuant(pixels, samplefac) {
 
 module.exports = NeuQuant;
 
-},{}],33:[function(require,module,exports){
-arguments[4][8][0].apply(exports,arguments)
-},{"./_stream_readable":35,"./_stream_writable":37,"_process":139,"core-util-is":14,"dup":8,"inherits":96}],34:[function(require,module,exports){
-arguments[4][9][0].apply(exports,arguments)
-},{"./_stream_transform":36,"core-util-is":14,"dup":9,"inherits":96}],35:[function(require,module,exports){
+},{}],31:[function(require,module,exports){
+arguments[4][6][0].apply(exports,arguments)
+},{"./_stream_readable":33,"./_stream_writable":35,"_process":136,"core-util-is":12,"dup":6,"inherits":94}],32:[function(require,module,exports){
+arguments[4][7][0].apply(exports,arguments)
+},{"./_stream_transform":34,"core-util-is":12,"dup":7,"inherits":94}],33:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -16949,7 +16618,7 @@ function indexOf (xs, x) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":33,"_process":139,"buffer":73,"core-util-is":14,"events":74,"inherits":96,"isarray":99,"stream":190,"string_decoder/":191,"util":4}],36:[function(require,module,exports){
+},{"./_stream_duplex":31,"_process":136,"buffer":71,"core-util-is":12,"events":72,"inherits":94,"isarray":97,"stream":187,"string_decoder/":188,"util":4}],34:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -17160,7 +16829,7 @@ function done(stream, er) {
   return stream.push(null);
 }
 
-},{"./_stream_duplex":33,"core-util-is":14,"inherits":96}],37:[function(require,module,exports){
+},{"./_stream_duplex":31,"core-util-is":12,"inherits":94}],35:[function(require,module,exports){
 (function (process){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -17641,7 +17310,7 @@ function endWritable(stream, state, cb) {
 }
 
 }).call(this,require('_process'))
-},{"./_stream_duplex":33,"_process":139,"buffer":73,"core-util-is":14,"inherits":96,"stream":190}],38:[function(require,module,exports){
+},{"./_stream_duplex":31,"_process":136,"buffer":71,"core-util-is":12,"inherits":94,"stream":187}],36:[function(require,module,exports){
 (function (process){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = require('stream');
@@ -17655,7 +17324,7 @@ if (!process.browser && process.env.READABLE_STREAM === 'disable') {
 }
 
 }).call(this,require('_process'))
-},{"./lib/_stream_duplex.js":33,"./lib/_stream_passthrough.js":34,"./lib/_stream_readable.js":35,"./lib/_stream_transform.js":36,"./lib/_stream_writable.js":37,"_process":139,"stream":190}],39:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":31,"./lib/_stream_passthrough.js":32,"./lib/_stream_readable.js":33,"./lib/_stream_transform.js":34,"./lib/_stream_writable.js":35,"_process":136,"stream":187}],37:[function(require,module,exports){
 'use strict'
 
 function createContext (width, height, options) {
@@ -17724,7 +17393,7 @@ function createContext (width, height, options) {
 
 module.exports = createContext
 
-},{}],40:[function(require,module,exports){
+},{}],38:[function(require,module,exports){
 'use strict';
 
 function mock1D() {
@@ -17806,7 +17475,7 @@ module.exports = function gpuMock(fn, options) {
   }
 };
 
-},{}],41:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 const {
 	utils
 } = require('./utils');
@@ -17827,7 +17496,7 @@ function alias(name, source) {
 module.exports = {
 	alias
 };
-},{"./utils":65}],42:[function(require,module,exports){
+},{"./utils":63}],40:[function(require,module,exports){
 const {
 	FunctionNode
 } = require('../function-node');
@@ -17889,9 +17558,11 @@ class CPUFunctionNode extends FunctionNode {
 	 */
 	astReturnStatement(ast, retArr) {
 		if (this.isRootKernel) {
-			retArr.push('kernelResult = ');
+			retArr.push(this.leadingReturnStatement);
 			this.astGeneric(ast.argument, retArr);
-			retArr.push(';');
+			retArr.push(';\n');
+			retArr.push(this.followingReturnStatement);
+			retArr.push('continue;\n');
 		} else if (this.isSubKernel) {
 			retArr.push(`subKernelResult_${ this.name } = `);
 			this.astGeneric(ast.argument, retArr);
@@ -18290,11 +17961,17 @@ class CPUFunctionNode extends FunctionNode {
 				throw this.astErrorOutput('Unexpected expression', mNode);
 		}
 
-		if (type === 'Number' || type === 'Integer') {
-			retArr.push(`${origin}_${name}`);
-			return retArr;
+		// handle simple types
+		switch (type) {
+			case 'Number':
+			case 'Integer':
+			case 'Float':
+			case 'Boolean':
+				retArr.push(`${ origin }_${ name}`);
+				return retArr;
 		}
 
+		// handle more complex types
 		// argument may have come from a parent
 		const synonymName = this.getKernelArgumentName(name);
 		const markupName = `${origin}_${synonymName || name}`;
@@ -18448,7 +18125,7 @@ class CPUFunctionNode extends FunctionNode {
 module.exports = {
 	CPUFunctionNode
 };
-},{"../function-node":46}],43:[function(require,module,exports){
+},{"../function-node":44}],41:[function(require,module,exports){
 const {
 	utils
 } = require('../../utils');
@@ -18521,7 +18198,7 @@ function cpuKernelString(cpuKernel, name) {
 module.exports = {
 	cpuKernelString
 };
-},{"../../kernel-run-shortcut":62,"../../utils":65}],44:[function(require,module,exports){
+},{"../../kernel-run-shortcut":60,"../../utils":63}],42:[function(require,module,exports){
 const {
 	Kernel
 } = require('../kernel');
@@ -18644,6 +18321,17 @@ class CPUKernel extends Kernel {
 	}
 
 	translateSource() {
+		this.leadingReturnStatement = this.output.length > 1 ? 'resultX[x] = ' : 'result[x] = ';
+		if (this.subKernels) {
+			const followingReturnStatement = []
+			for (let i = 0; i < this.subKernels.length; i++) {
+				const {
+					name
+				} = this.subKernels[i];
+				followingReturnStatement.push(this.output.length > 1 ? `resultX_${ name }[x] = subKernelResult_${ name };\n` : `result_${ name }[x] = subKernelResult_${ name };\n`);
+			}
+			this.followingReturnStatement = followingReturnStatement.join('');
+		}
 		const functionBuilder = FunctionBuilder.fromKernel(this, CPUFunctionNode);
 		this.translatedSources = functionBuilder.getPrototypes('kernel');
 		if (!this.graphical && !this.returnType) {
@@ -18732,29 +18420,28 @@ class CPUKernel extends Kernel {
 	getKernelString() {
 		if (this._kernelString !== null) return this._kernelString;
 
-		let kernel = null;
+		let kernelThreadString = null;
 		let {
 			translatedSources
 		} = this;
 		if (translatedSources.length > 1) {
 			translatedSources = translatedSources.filter(fn => {
 				if (/^function/.test(fn)) return fn;
-				kernel = fn;
+				kernelThreadString = fn;
 				return false;
 			})
 		} else {
-			kernel = translatedSources.shift();
+			kernelThreadString = translatedSources.shift();
 		}
-		const kernelString = this._kernelString = `
-		const LOOP_MAX = ${ this._getLoopMaxString() }
-		const constants = this.constants;
-		const _this = this;
-    return function (${ this.argumentNames.map(argumentName => 'user_' + argumentName).join(', ') }) {
-      ${ this._processConstants() }
-      ${ this._processArguments() }
-      ${ this.graphical ? this._graphicalKernelBody(kernel) : this._resultKernelBody(kernel) }
-      ${ translatedSources.length > 0 ? translatedSources.join('\n') : '' }
-    }.bind(this);`;
+		const kernelString = this._kernelString = `  const LOOP_MAX = ${ this._getLoopMaxString() }
+  const constants = this.constants;
+  const _this = this;
+  return (${ this.argumentNames.map(argumentName => 'user_' + argumentName).join(', ') }) => {
+    ${ this._processConstants() }
+    ${ this._processArguments() }
+    ${ this.graphical ? this._graphicalKernelBody(kernelThreadString) : this._resultKernelBody(kernelThreadString) }
+    ${ translatedSources.length > 0 ? translatedSources.join('\n') : '' }
+  };`;
 		return kernelString;
 	}
 
@@ -18772,8 +18459,8 @@ class CPUKernel extends Kernel {
 	_getLoopMaxString() {
 		return (
 			this.loopMaxIterations ?
-			` ${ parseInt(this.loopMaxIterations) };\n` :
-			' 1000;\n'
+			` ${ parseInt(this.loopMaxIterations) };` :
+			' 1000;'
 		);
 	}
 
@@ -18785,19 +18472,19 @@ class CPUKernel extends Kernel {
 			const type = this.constantTypes[p];
 			switch (type) {
 				case 'HTMLImage':
-					result.push(`  const constants_${p} = this._imageTo2DArray(this.constants.${p});`);
+					result.push(`    const constants_${p} = this._imageTo2DArray(this.constants.${p});\n`);
 					break;
 				case 'HTMLImageArray':
-					result.push(`  const constants_${p} = this._imageTo3DArray(this.constants.${p});`);
+					result.push(`    const constants_${p} = this._imageTo3DArray(this.constants.${p});\n`);
 					break;
 				case 'Input':
-					result.push(`  const constants_${p} = this.constants.${p}.value;`);
+					result.push(`    const constants_${p} = this.constants.${p}.value;\n`);
 					break;
 				default:
-					result.push(`  const constants_${p} = this.constants.${p};`);
+					result.push(`    const constants_${p} = this.constants.${p};\n`);
 			}
 		}
-		return result.join('\n');
+		return result.join('');
 	}
 
 	_processArguments() {
@@ -18805,17 +18492,17 @@ class CPUKernel extends Kernel {
 		for (let i = 0; i < this.argumentTypes.length; i++) {
 			switch (this.argumentTypes[i]) {
 				case 'HTMLImage':
-					result.push(`  user_${this.argumentNames[i]} = this._imageTo2DArray(user_${this.argumentNames[i]});`);
+					result.push(`    user_${this.argumentNames[i]} = this._imageTo2DArray(user_${this.argumentNames[i]});\n`);
 					break;
 				case 'HTMLImageArray':
-					result.push(`  user_${this.argumentNames[i]} = this._imageTo3DArray(user_${this.argumentNames[i]});`);
+					result.push(`    user_${this.argumentNames[i]} = this._imageTo3DArray(user_${this.argumentNames[i]});\n`);
 					break;
 				case 'Input':
-					result.push(`  user_${this.argumentNames[i]} = user_${this.argumentNames[i]}.value;`);
+					result.push(`    user_${this.argumentNames[i]} = user_${this.argumentNames[i]}.value;\n`);
 					break;
 			}
 		}
-		return result.join(';\n');
+		return result.join('');
 	}
 
 	_imageTo2DArray(image) {
@@ -18890,10 +18577,10 @@ class CPUKernel extends Kernel {
 		}
 	}
 
-	_graphicalKernelBody(kernelString) {
+	_graphicalKernelBody(kernelThreadString) {
 		switch (this.output.length) {
 			case 2:
-				return this._graphicalKernel2DLoop(kernelString) + this._graphicalOutput();
+				return this._graphicalKernel2DLoop(kernelThreadString) + this._graphicalOutput();
 			default:
 				throw new Error('unsupported size kernel');
 		}
@@ -18931,16 +18618,13 @@ class CPUKernel extends Kernel {
 		} = this;
 		const constructorString = this._getKernelResultTypeConstructorString();
 		return `const result = new ${constructorString}(${ output[0] });
-    ${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };`).join('\n') }
-		${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new ${constructorString}(${ output[0] });\n`).join('') }
+    ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new ${constructorString}(${ output[0] });\n`).join('    ') }
+    ${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };\n`).join('    ') }
     for (let x = 0; x < ${ output[0] }; x++) {
       this.thread.x = x;
       this.thread.y = 0;
       this.thread.z = 0;
-      let kernelResult;
       ${ kernelString }
-      result[x] = kernelResult;
-      ${ this._mapSubKernels(subKernel => `result_${ subKernel.name }[x] = subKernelResult_${ subKernel.name };\n`).join('') }
     }`;
 	}
 
@@ -18950,19 +18634,16 @@ class CPUKernel extends Kernel {
 		} = this;
 		const constructorString = this._getKernelResultTypeConstructorString();
 		return `const result = new Array(${ output[1] });
-		${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };`).join('\n') }
-    ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[1] });\n`).join('') }
+		${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[1] });\n`).join('    ') }
+		${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };\n`).join('    ') }
     for (let y = 0; y < ${ output[1] }; y++) {
       this.thread.z = 0;
       this.thread.y = y;
       const resultX = result[y] = new ${constructorString}(${ output[0] });
-      ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name }X = result_${subKernel.name}[y] = new ${constructorString}(${ output[0] });\n`).join('') }
+      ${ this._mapSubKernels(subKernel => `const resultX_${ subKernel.name } = result_${subKernel.name}[y] = new ${constructorString}(${ output[0] });\n`).join('') }
       for (let x = 0; x < ${ output[0] }; x++) {
       	this.thread.x = x;
-        let kernelResult;
         ${ kernelString }
-        resultX[x] = kernelResult;
-        ${ this._mapSubKernels(subKernel => `result_${ subKernel.name }X[x] = subKernelResult_${ subKernel.name };\n`).join('') }
       }
     }`;
 	}
@@ -18972,16 +18653,15 @@ class CPUKernel extends Kernel {
 			output
 		} = this;
 		const constructorString = this._getKernelResultTypeConstructorString();
-		return `${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };`).join('\n') }
-    ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[1] });\n`).join('') }
+		return `  ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[1] });\n`).join('    ') }
+		${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };\n`).join('    ') }
     for (let y = 0; y < ${ output[1] }; y++) {
       this.thread.z = 0;
       this.thread.y = y;
-      ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name }X = result_${subKernel.name}[y] = new ${constructorString}(${ output[0] });\n`).join('') }
+      ${ this._mapSubKernels(subKernel => `const resultX_${ subKernel.name } = result_${subKernel.name}[y] = new ${constructorString}(${ output[0] });\n`).join('') }
       for (let x = 0; x < ${ output[0] }; x++) {
       	this.thread.x = x;
         ${ kernelString }
-        ${ this._mapSubKernels(subKernel => `result_${ subKernel.name }X[x] = subKernelResult_${ subKernel.name };\n`).join('') }
       }
     }`;
 	}
@@ -18992,22 +18672,19 @@ class CPUKernel extends Kernel {
 		} = this;
 		const constructorString = this._getKernelResultTypeConstructorString();
 		return `const result = new Array(${ output[2] });
-    ${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };`).join('\n') }
-    ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[2] });\n`).join('') }
+    ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name } = new Array(${ output[2] });\n`).join('    ') }
+    ${ this._mapSubKernels(subKernel => `let subKernelResult_${ subKernel.name };\n`).join('    ') }
     for (let z = 0; z < ${ output[2] }; z++) {
       this.thread.z = z;
       const resultY = result[z] = new Array(${ output[1] });
-      ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name }Y = result_${subKernel.name}[z] = new Array(${ output[1] });\n`).join('') }
+      ${ this._mapSubKernels(subKernel => `const resultY_${ subKernel.name } = result_${subKernel.name}[z] = new Array(${ output[1] });\n`).join('      ') }
       for (let y = 0; y < ${ output[1] }; y++) {
         this.thread.y = y;
         const resultX = resultY[y] = new ${constructorString}(${ output[0] });
-        ${ this._mapSubKernels(subKernel => `const result_${ subKernel.name }X = result_${subKernel.name}Y[y] = new ${constructorString}(${ output[0] });\n`).join('') }
+        ${ this._mapSubKernels(subKernel => `const resultX_${ subKernel.name } = resultY_${subKernel.name}[y] = new ${constructorString}(${ output[0] });\n`).join('        ') }
         for (let x = 0; x < ${ output[0] }; x++) {
         	this.thread.x = x;
-          let kernelResult;
           ${ kernelString }
-          resultX[x] = kernelResult;
-          ${ this._mapSubKernels(subKernel => `result_${ subKernel.name }X[x] = subKernelResult_${ subKernel.name };\n`).join('') }
         }
       }
     }`;
@@ -19015,11 +18692,11 @@ class CPUKernel extends Kernel {
 
 	_kernelOutput() {
 		if (!this.subKernels) {
-			return 'return result;';
+			return '\n    return result;';
 		}
-		return `return {
+		return `\n    return {
       result: result,
-      ${ this.subKernels.map(subKernel => `${ subKernel.property }: result_${ subKernel.name }`).join(',\n') }
+      ${ this.subKernels.map(subKernel => `${ subKernel.property }: result_${ subKernel.name }`).join(',\n      ') }
     };`;
 	}
 
@@ -19048,7 +18725,7 @@ class CPUKernel extends Kernel {
 module.exports = {
 	CPUKernel
 };
-},{"../../utils":65,"../function-builder":45,"../kernel":49,"./function-node":42,"./kernel-string":43}],45:[function(require,module,exports){
+},{"../../utils":63,"../function-builder":43,"../kernel":47,"./function-node":40,"./kernel-string":41}],43:[function(require,module,exports){
 /**
  * @desc This handles all the raw state, converted state, etc. of a single function.
  * [INTERNAL] A collection of functionNodes.
@@ -19080,6 +18757,8 @@ class FunctionBuilder {
 			source,
 			subKernels,
 			functions,
+			leadingReturnStatement,
+			followingReturnStatement,
 		} = kernel;
 
 		const lookupReturnType = (functionName, ast, requestingNode) => {
@@ -19120,7 +18799,7 @@ class FunctionBuilder {
 
 		const onNestedFunction = (fnString, returnType) => {
 			functionBuilder.addFunctionNode(new FunctionNode(fnString, Object.assign({}, nodeOptions, {
-				returnType: returnType || 'Number',
+				returnType: returnType || 'Number', // TODO: I think this needs removed
 				lookupReturnType,
 				lookupArgumentType,
 				lookupFunctionArgumentTypes,
@@ -19163,6 +18842,8 @@ class FunctionBuilder {
 			argumentTypes,
 			argumentSizes,
 			argumentBitRatios,
+			leadingReturnStatement,
+			followingReturnStatement,
 		});
 
 		if (typeof source === 'object' && source.functionNodes) {
@@ -19206,7 +18887,7 @@ class FunctionBuilder {
 					name,
 					isSubKernel: true,
 					isRootKernel: false,
-					returnType: 'Number',
+					returnType: 'Number', // TODO: I think this needs removed
 				}));
 			});
 		}
@@ -19598,7 +19279,7 @@ class FunctionBuilder {
 module.exports = {
 	FunctionBuilder
 };
-},{}],46:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 const {
 	utils
 } = require('../utils');
@@ -19654,6 +19335,8 @@ class FunctionNode {
 		this.returnType = null;
 		this.output = [];
 		this.plugins = null;
+		this.leadingReturnStatement = null;
+		this.followingReturnStatement = null;
 
 		if (settings) {
 			for (const p in settings) {
@@ -19881,7 +19564,9 @@ class FunctionNode {
 			argumentNames: this.argumentNames,
 			argumentTypes: this.argumentTypes,
 			argumentSizes: this.argumentSizes,
-			returnType: this.returnType
+			returnType: this.returnType,
+			leadingReturnStatement: this.leadingReturnStatement,
+			followingReturnStatement: this.followingReturnStatement,
 		};
 
 		return {
@@ -19911,6 +19596,8 @@ class FunctionNode {
 				}
 				if (Number.isInteger(ast.value)) {
 					return 'LiteralInteger';
+				} else if (ast.value === true || ast.value === false) {
+					return 'Boolean';
 				} else {
 					return 'Number';
 				}
@@ -20859,7 +20546,7 @@ const typeLookupMap = {
 module.exports = {
 	FunctionNode
 };
-},{"../utils":65,"acorn":1}],47:[function(require,module,exports){
+},{"../utils":63,"acorn":1}],45:[function(require,module,exports){
 const {
 	Kernel
 } = require('./kernel');
@@ -21780,7 +21467,7 @@ module.exports = {
 	GLKernel,
 	renderStrategy
 };
-},{"../texture":64,"../utils":65,"./kernel":49}],48:[function(require,module,exports){
+},{"../texture":62,"../utils":63,"./kernel":47}],46:[function(require,module,exports){
 const getContext = require('gl');
 const {
 	WebGLKernel
@@ -21902,7 +21589,7 @@ class HeadlessGLKernel extends WebGLKernel {
 module.exports = {
 	HeadlessGLKernel
 };
-},{"../web-gl/kernel":53,"gl":39}],49:[function(require,module,exports){
+},{"../web-gl/kernel":51,"gl":37}],47:[function(require,module,exports){
 const {
 	utils
 } = require('../utils');
@@ -22071,6 +21758,8 @@ class Kernel {
 		this.plugins = null;
 
 		this.returnType = null;
+		this.leadingReturnStatement = null;
+		this.followingReturnStatement = null;
 	}
 
 	mergeSettings(settings) {
@@ -22459,7 +22148,7 @@ class Kernel {
 module.exports = {
 	Kernel
 };
-},{"../input":61,"../utils":65}],50:[function(require,module,exports){
+},{"../input":59,"../utils":63}],48:[function(require,module,exports){
 const fragmentShader = `__HEADER__;
 precision highp float;
 precision highp int;
@@ -22666,7 +22355,7 @@ void main(void) {
 module.exports = {
 	fragmentShader
 };
-},{}],51:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 const {
 	FunctionNode
 } = require('../function-node');
@@ -23094,6 +22783,13 @@ class WebGLFunctionNode extends FunctionNode {
 					retArr.push(operatorMap[ast.operator] || ast.operator);
 					this.astGeneric(ast.right, retArr);
 					break;
+
+				case 'Boolean & Boolean':
+					this.astGeneric(ast.left, retArr);
+					retArr.push(operatorMap[ast.operator] || ast.operator);
+					this.astGeneric(ast.right, retArr);
+					break;
+
 				default:
 					throw this.astErrorOutput(`Unhandled binary expression between ${key}`, ast);
 			}
@@ -23114,9 +22810,17 @@ class WebGLFunctionNode extends FunctionNode {
 			throw this.astErrorOutput('IdentifierExpression - not an Identifier', idtNode);
 		}
 
+		const type = this.getType(idtNode);
+
 		if (idtNode.name === 'Infinity') {
 			// https://stackoverflow.com/a/47543127/1324039
 			retArr.push('3.402823466e+38');
+		} else if (type === 'Boolean') {
+			if (this.argumentNames.indexOf(idtNode.name) > -1) {
+				retArr.push(`bool(user_${idtNode.name})`);
+			} else {
+				retArr.push(`user_${idtNode.name}`);
+			}
 		} else {
 			const userArgumentName = this.getKernelArgumentName(idtNode.name);
 			if (userArgumentName) {
@@ -23540,11 +23244,19 @@ class WebGLFunctionNode extends FunctionNode {
 				throw this.astErrorOutput('Unexpected expression', mNode);
 		}
 
-		if (type === 'Number' || type === 'Integer') {
-			retArr.push(`${ origin }_${ name}`);
-			return retArr;
+		// handle simple types
+		switch (type) {
+			case 'Number':
+			case 'Integer':
+			case 'Float':
+				retArr.push(`${ origin }_${ name}`);
+				return retArr;
+			case 'Boolean':
+				retArr.push(`bool(${ origin }_${ name})`);
+				return retArr;
 		}
 
+		// handle more complex types
 		// argument may have come from a parent
 		let synonymName = this.getKernelArgumentName(name);
 
@@ -23866,6 +23578,7 @@ const typeMap = {
 	'Array(4)': 'vec4',
 	'Array2D': 'sampler2D',
 	'Array3D': 'sampler2D',
+	'Boolean': 'bool',
 	'Float': 'float',
 	'Input': 'sampler2D',
 	'Integer': 'int',
@@ -23887,7 +23600,7 @@ const operatorMap = {
 module.exports = {
 	WebGLFunctionNode
 };
-},{"../function-node":46}],52:[function(require,module,exports){
+},{"../function-node":44}],50:[function(require,module,exports){
 const {
 	utils
 } = require('../../utils');
@@ -24026,7 +23739,7 @@ function webGLKernelString(gpuKernel, name) {
 module.exports = {
 	webGLKernelString
 };
-},{"../../kernel-run-shortcut":62,"../../utils":65}],53:[function(require,module,exports){
+},{"../../kernel-run-shortcut":60,"../../utils":63}],51:[function(require,module,exports){
 const {
 	GLKernel
 } = require('../gl-kernel');
@@ -24479,7 +24192,7 @@ class WebGLKernel extends GLKernel {
 		for (let p in this.constants) {
 			const value = this.constants[p];
 			const type = utils.getVariableType(value);
-			if (type === 'Float' || type === 'Integer') {
+			if (type === 'Float' || type === 'Integer' || type === 'Boolean') {
 				continue;
 			}
 			gl.useProgram(this.program);
@@ -25106,6 +24819,11 @@ class WebGLKernel extends GLKernel {
 					this.setUniform1i(`user_${name}`, this.argumentsLength);
 					break;
 				}
+			case 'Boolean':
+				{
+					this.setUniform1i(`user_${name}`, value ? 1 : 0);
+					break;
+				}
 			default:
 				throw new Error('Argument type not supported: ' + value);
 		}
@@ -25288,6 +25006,7 @@ class WebGLKernel extends GLKernel {
 				}
 			case 'Integer':
 			case 'Float':
+			case 'Boolean':
 			default:
 				throw new Error('constant type not supported: ' + value);
 		}
@@ -25492,7 +25211,7 @@ class WebGLKernel extends GLKernel {
 						result.push(`float user_${name} = ${ Number.isInteger(value) ? value + '.0' : value }`);
 						break;
 					default:
-						throw new Error(`Param type ${type} not supported in WebGL`);
+						throw new Error(`Argument type ${type} not supported in WebGL`);
 				}
 			} else {
 				switch (type) {
@@ -25518,8 +25237,11 @@ class WebGLKernel extends GLKernel {
 					case 'Number':
 						result.push(`uniform float user_${name}`);
 						break;
+					case 'Boolean':
+						result.push(`uniform int user_${name}`);
+						break;
 					default:
-						throw new Error(`Param type ${type} not supported in WebGL`);
+						throw new Error(`Argument type ${type} not supported in WebGL`);
 				}
 			}
 		}
@@ -25556,6 +25278,9 @@ class WebGLKernel extends GLKernel {
 							`uniform ivec2 constants_${name}Size`,
 							`uniform ivec3 constants_${name}Dim`,
 						);
+						break;
+					case 'Boolean':
+						result.push('const bool constants_' + name + ' = ' + (value ? 'true' : 'false'));
 						break;
 					default:
 						throw new Error(`Unsupported constant ${name} type ${type}`);
@@ -25958,7 +25683,7 @@ class WebGLKernel extends GLKernel {
 module.exports = {
 	WebGLKernel
 };
-},{"../../plugins/triangle-noise":63,"../../texture":64,"../../utils":65,"../function-builder":45,"../gl-kernel":47,"./fragment-shader":50,"./function-node":51,"./kernel-string":52,"./vertex-shader":54}],54:[function(require,module,exports){
+},{"../../plugins/triangle-noise":61,"../../texture":62,"../../utils":63,"../function-builder":43,"../gl-kernel":45,"./fragment-shader":48,"./function-node":49,"./kernel-string":50,"./vertex-shader":52}],52:[function(require,module,exports){
 const vertexShader = `precision highp float;
 precision highp int;
 precision highp sampler2D;
@@ -25977,7 +25702,7 @@ void main(void) {
 module.exports = {
 	vertexShader
 };
-},{}],55:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 const fragmentShader = `#version 300 es
 __HEADER__;
 precision highp float;
@@ -26172,7 +25897,7 @@ void main(void) {
 module.exports = {
 	fragmentShader
 };
-},{}],56:[function(require,module,exports){
+},{}],54:[function(require,module,exports){
 const {
 	WebGLFunctionNode
 } = require('../web-gl/function-node');
@@ -26199,17 +25924,23 @@ class WebGL2FunctionNode extends WebGLFunctionNode {
 			);
 		}
 
-		switch (idtNode.name) {
-			case 'Infinity':
-				retArr.push('intBitsToFloat(2139095039)');
-				break;
-			default:
-				const userArgumentName = this.getKernelArgumentName(idtNode.name);
-				if (userArgumentName) {
-					retArr.push(`user_${userArgumentName}`);
-				} else {
-					retArr.push(`user_${idtNode.name}`);
-				}
+		const type = this.getType(idtNode);
+
+		if (idtNode.name === 'Infinity') {
+			retArr.push('intBitsToFloat(2139095039)');
+		} else if (type === 'Boolean') {
+			if (this.argumentNames.indexOf(idtNode.name) > -1) {
+				retArr.push(`bool(user_${idtNode.name})`);
+			} else {
+				retArr.push(`user_${idtNode.name}`);
+			}
+		} else {
+			const userArgumentName = this.getKernelArgumentName(idtNode.name);
+			if (userArgumentName) {
+				retArr.push(`user_${userArgumentName}`);
+			} else {
+				retArr.push(`user_${idtNode.name}`);
+			}
 		}
 
 		return retArr;
@@ -26219,7 +25950,7 @@ class WebGL2FunctionNode extends WebGLFunctionNode {
 module.exports = {
 	WebGL2FunctionNode
 };
-},{"../web-gl/function-node":51}],57:[function(require,module,exports){
+},{"../web-gl/function-node":49}],55:[function(require,module,exports){
 const {
 	WebGLKernel
 } = require('../web-gl/kernel');
@@ -26846,6 +26577,11 @@ class WebGL2Kernel extends WebGLKernel {
 					this.setUniform1i(`user_${name}`, this.argumentsLength);
 					break;
 				}
+			case 'Boolean':
+				{
+					this.setUniform1i(`user_${name}`, value ? 1 : 0);
+					break;
+				}
 			default:
 				throw new Error('Argument type not supported: ' + value);
 		}
@@ -26887,7 +26623,9 @@ class WebGL2Kernel extends WebGLKernel {
 							`uniform highp ivec3 constants_${ name }Dim`,
 						);
 						break;
-
+					case 'Boolean':
+						result.push('const bool constants_' + name + ' = ' + (value ? 'true' : 'false'));
+						break;
 					default:
 						throw new Error(`Unsupported constant ${ name } type ${ type }`);
 				}
@@ -27202,8 +26940,11 @@ class WebGL2Kernel extends WebGLKernel {
 					case 'Number':
 						result.push(`highp float user_${ name } = ${ Number.isInteger(value) ? value + '.0' : value }`);
 						break;
+					case 'Boolean':
+						result.push(`uniform int user_${name}`);
+						break;
 					default:
-						throw new Error(`Param type ${type} not supported in WebGL2`);
+						throw new Error(`Argument type ${type} not supported in WebGL2`);
 				}
 			} else {
 				switch (type) {
@@ -27234,8 +26975,11 @@ class WebGL2Kernel extends WebGLKernel {
 					case 'Number':
 						result.push(`uniform float user_${ name }`);
 						break;
+					case 'Boolean':
+						result.push(`uniform int user_${name}`);
+						break;
 					default:
-						throw new Error(`Param type ${type} not supported in WebGL2`);
+						throw new Error(`Argument type ${type} not supported in WebGL2`);
 				}
 			}
 		}
@@ -27503,7 +27247,7 @@ class WebGL2Kernel extends WebGLKernel {
 module.exports = {
 	WebGL2Kernel
 };
-},{"../../texture":64,"../../utils":65,"../function-builder":45,"../web-gl/kernel":53,"./fragment-shader":55,"./function-node":56,"./vertex-shader":58}],58:[function(require,module,exports){
+},{"../../texture":62,"../../utils":63,"../function-builder":43,"../web-gl/kernel":51,"./fragment-shader":53,"./function-node":54,"./vertex-shader":56}],56:[function(require,module,exports){
 const vertexShader = `#version 300 es
 precision highp float;
 precision highp int;
@@ -27523,7 +27267,7 @@ void main(void) {
 module.exports = {
 	vertexShader
 };
-},{}],59:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 const gpuMock = require('gpu-mock.js');
 const {
 	utils
@@ -27980,7 +27724,7 @@ module.exports = {
 	kernelOrder,
 	kernelTypes
 };
-},{"./backend/cpu/kernel":44,"./backend/headless-gl/kernel":48,"./backend/web-gl/kernel":53,"./backend/web-gl2/kernel":57,"./kernel-run-shortcut":62,"./utils":65,"gpu-mock.js":40}],60:[function(require,module,exports){
+},{"./backend/cpu/kernel":42,"./backend/headless-gl/kernel":46,"./backend/web-gl/kernel":51,"./backend/web-gl2/kernel":55,"./kernel-run-shortcut":60,"./utils":63,"gpu-mock.js":38}],58:[function(require,module,exports){
 const {
 	GPU
 } = require('./gpu');
@@ -28055,7 +27799,7 @@ module.exports = {
 	GLKernel,
 	Kernel,
 };
-},{"./alias":41,"./backend/cpu/function-node":42,"./backend/cpu/kernel":44,"./backend/function-builder":45,"./backend/function-node":46,"./backend/gl-kernel":47,"./backend/headless-gl/kernel":48,"./backend/kernel":49,"./backend/web-gl/function-node":51,"./backend/web-gl/kernel":53,"./backend/web-gl2/function-node":56,"./backend/web-gl2/kernel":57,"./gpu":59,"./input":61,"./texture":64,"./utils":65}],61:[function(require,module,exports){
+},{"./alias":39,"./backend/cpu/function-node":40,"./backend/cpu/kernel":42,"./backend/function-builder":43,"./backend/function-node":44,"./backend/gl-kernel":45,"./backend/headless-gl/kernel":46,"./backend/kernel":47,"./backend/web-gl/function-node":49,"./backend/web-gl/kernel":51,"./backend/web-gl2/function-node":54,"./backend/web-gl2/kernel":55,"./gpu":57,"./input":59,"./texture":62,"./utils":63}],59:[function(require,module,exports){
 class Input {
 	constructor(value, size) {
 		this.value = value;
@@ -28089,7 +27833,7 @@ module.exports = {
 	Input,
 	input
 };
-},{}],62:[function(require,module,exports){
+},{}],60:[function(require,module,exports){
 const {
 	utils
 } = require('./utils');
@@ -28135,7 +27879,7 @@ function kernelRunShortcut(kernel) {
 module.exports = {
 	kernelRunShortcut
 };
-},{"./utils":65}],63:[function(require,module,exports){
+},{"./utils":63}],61:[function(require,module,exports){
 const source = `
 
 uniform highp float triangle_noise_seed;
@@ -28189,7 +27933,7 @@ module.exports = {
 	functionReturnType,
 	source
 };
-},{}],64:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 /**
  * @desc WebGl Texture implementation in JS
  * @param {ITextureSettings} settings
@@ -28267,7 +28011,7 @@ class Texture {
 module.exports = {
 	Texture
 };
-},{}],65:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 const {
 	Input
 } = require('./input');
@@ -28402,6 +28146,8 @@ const utils = {
 				return 'Integer';
 			}
 			return 'Float';
+		} else if (typeof value === 'boolean') {
+			return 'Boolean';
 		} else if (value instanceof Texture) {
 			return value.type;
 		} else if (value instanceof Input) {
@@ -28646,7 +28392,7 @@ const _systemEndianness = utils.getSystemEndianness();
 module.exports = {
 	utils
 };
-},{"./input":61,"./texture":64}],66:[function(require,module,exports){
+},{"./input":59,"./texture":62}],64:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -29140,7 +28886,7 @@ var objectKeys = Object.keys || function (obj) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"util/":69}],67:[function(require,module,exports){
+},{"util/":67}],65:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -29165,14 +28911,14 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],68:[function(require,module,exports){
+},{}],66:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],69:[function(require,module,exports){
+},{}],67:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -29762,7 +29508,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":68,"_process":139,"inherits":67}],70:[function(require,module,exports){
+},{"./support/isBuffer":66,"_process":136,"inherits":65}],68:[function(require,module,exports){
 (function (process,Buffer){
 'use strict';
 /* eslint camelcase: "off" */
@@ -30174,7 +29920,7 @@ Zlib.prototype._reset = function () {
 
 exports.Zlib = Zlib;
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":139,"assert":66,"buffer":73,"pako/lib/zlib/constants":77,"pako/lib/zlib/deflate.js":79,"pako/lib/zlib/inflate.js":81,"pako/lib/zlib/zstream":85}],71:[function(require,module,exports){
+},{"_process":136,"assert":64,"buffer":71,"pako/lib/zlib/constants":75,"pako/lib/zlib/deflate.js":77,"pako/lib/zlib/inflate.js":79,"pako/lib/zlib/zstream":83}],69:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -30786,9 +30532,9 @@ util.inherits(DeflateRaw, Zlib);
 util.inherits(InflateRaw, Zlib);
 util.inherits(Unzip, Zlib);
 }).call(this,require('_process'))
-},{"./binding":70,"_process":139,"assert":66,"buffer":73,"stream":190,"util":200}],72:[function(require,module,exports){
+},{"./binding":68,"_process":136,"assert":64,"buffer":71,"stream":187,"util":196}],70:[function(require,module,exports){
 arguments[4][4][0].apply(exports,arguments)
-},{"dup":4}],73:[function(require,module,exports){
+},{"dup":4}],71:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -32504,7 +32250,7 @@ function numberIsNaN (obj) {
   return obj !== obj // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":2,"ieee754":86}],74:[function(require,module,exports){
+},{"base64-js":2,"ieee754":84}],72:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -33029,7 +32775,7 @@ function functionBindPolyfill(context) {
   };
 }
 
-},{}],75:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 'use strict';
 
 
@@ -33136,7 +32882,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],76:[function(require,module,exports){
+},{}],74:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -33189,7 +32935,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],77:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -33259,7 +33005,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],78:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -33320,7 +33066,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],79:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -35196,7 +34942,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":75,"./adler32":76,"./crc32":78,"./messages":83,"./trees":84}],80:[function(require,module,exports){
+},{"../utils/common":73,"./adler32":74,"./crc32":76,"./messages":81,"./trees":82}],78:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -35543,7 +35289,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],81:[function(require,module,exports){
+},{}],79:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -37101,7 +36847,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":75,"./adler32":76,"./crc32":78,"./inffast":80,"./inftrees":82}],82:[function(require,module,exports){
+},{"../utils/common":73,"./adler32":74,"./crc32":76,"./inffast":78,"./inftrees":80}],80:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -37446,7 +37192,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":75}],83:[function(require,module,exports){
+},{"../utils/common":73}],81:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -37480,7 +37226,7 @@ module.exports = {
   '-6':   'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],84:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -38702,7 +38448,7 @@ exports._tr_flush_block  = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":75}],85:[function(require,module,exports){
+},{"../utils/common":73}],83:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -38751,7 +38497,7 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],86:[function(require,module,exports){
+},{}],84:[function(require,module,exports){
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m
   var eLen = (nBytes * 8) - mLen - 1
@@ -38837,7 +38583,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128
 }
 
-},{}],87:[function(require,module,exports){
+},{}],85:[function(require,module,exports){
 /*
  * Invert the image
  */
@@ -38889,7 +38635,7 @@ var info = {
   }
 }
 module.exports = [Invert,info];
-},{}],88:[function(require,module,exports){
+},{}],86:[function(require,module,exports){
 /**
  * Copyright (c) 2015 Guyon Roche
  * 
@@ -38922,7 +38668,7 @@ var main = module.exports = {
 
 _.extend(main, require("./lib/enums"));
 
-},{"./lib/bitmap":89,"./lib/enums":90,"underscore":195}],89:[function(require,module,exports){
+},{"./lib/bitmap":87,"./lib/enums":88,"underscore":191}],87:[function(require,module,exports){
 (function (Buffer){
 /**
  * Copyright (c) 2015 Guyon Roche
@@ -39517,7 +39263,7 @@ Bitmap.prototype = {
     }
 }
 }).call(this,require("buffer").Buffer)
-},{"./enums":90,"./resize":91,"./utils":92,"bluebird":3,"buffer":73,"fs":72,"jpeg-js":93,"node-png":114,"underscore":195}],90:[function(require,module,exports){
+},{"./enums":88,"./resize":89,"./utils":90,"bluebird":3,"buffer":71,"fs":70,"jpeg-js":91,"node-png":112,"underscore":191}],88:[function(require,module,exports){
 /**
  * Copyright (c) 2015 Guyon Roche
  * 
@@ -39548,7 +39294,7 @@ module.exports = {
         PNG: 2
     }
 };
-},{}],91:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 (function (Buffer){
 /**
  * Copyright (c) 2015 Guyon Roche
@@ -39842,7 +39588,7 @@ module.exports = {
     }
 }
 }).call(this,require("buffer").Buffer)
-},{"./bitmap":89,"bluebird":3,"buffer":73,"underscore":195}],92:[function(require,module,exports){
+},{"./bitmap":87,"bluebird":3,"buffer":71,"underscore":191}],90:[function(require,module,exports){
 /**
  * Copyright (c) 2015 Guyon Roche
  * 
@@ -39885,7 +39631,7 @@ var utils = module.exports = {
         }
     }
 }
-},{"bluebird":3,"fs":72,"underscore":195}],93:[function(require,module,exports){
+},{"bluebird":3,"fs":70,"underscore":191}],91:[function(require,module,exports){
 var encode = require('./lib/encoder'),
     decode = require('./lib/decoder');
 
@@ -39894,7 +39640,7 @@ module.exports = {
   decode: decode
 };
 
-},{"./lib/decoder":94,"./lib/encoder":95}],94:[function(require,module,exports){
+},{"./lib/decoder":92,"./lib/encoder":93}],92:[function(require,module,exports){
 (function (Buffer){
 /* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- /
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
@@ -40884,7 +40630,7 @@ function decode(jpegData) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],95:[function(require,module,exports){
+},{"buffer":71}],93:[function(require,module,exports){
 (function (Buffer){
 /*
   Copyright (c) 2008, Adobe Systems Incorporated
@@ -41654,9 +41400,9 @@ function getImageDataFromImage(idOrElement){
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],96:[function(require,module,exports){
-arguments[4][67][0].apply(exports,arguments)
-},{"dup":67}],97:[function(require,module,exports){
+},{"buffer":71}],94:[function(require,module,exports){
+arguments[4][65][0].apply(exports,arguments)
+},{"dup":65}],95:[function(require,module,exports){
 "use strict"
 
 function iota(n) {
@@ -41668,7 +41414,7 @@ function iota(n) {
 }
 
 module.exports = iota
-},{}],98:[function(require,module,exports){
+},{}],96:[function(require,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
@@ -41691,12 +41437,12 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],99:[function(require,module,exports){
+},{}],97:[function(require,module,exports){
 module.exports = Array.isArray || function (arr) {
   return Object.prototype.toString.call(arr) == '[object Array]';
 };
 
-},{}],100:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 (function webpackUniversalModuleDefinition(root, factory) {
 	if(typeof exports === 'object' && typeof module === 'object')
 		module.exports = factory();
@@ -51720,7 +51466,7 @@ exports.locate = locate;
 /***/ })
 /******/ ])["default"];
 });
-},{}],101:[function(require,module,exports){
+},{}],99:[function(require,module,exports){
 (function (global){
 /**
  * @license
@@ -68831,7 +68577,7 @@ exports.locate = locate;
 }.call(this));
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],102:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 (function (process){
 var path = require('path');
 var fs = require('fs');
@@ -68943,9 +68689,9 @@ mime.charsets = {
 module.exports = mime;
 
 }).call(this,require('_process'))
-},{"./types.json":103,"_process":139,"fs":72,"path":117}],103:[function(require,module,exports){
+},{"./types.json":101,"_process":136,"fs":70,"path":114}],101:[function(require,module,exports){
 module.exports={"application/andrew-inset":["ez"],"application/applixware":["aw"],"application/atom+xml":["atom"],"application/atomcat+xml":["atomcat"],"application/atomsvc+xml":["atomsvc"],"application/bdoc":["bdoc"],"application/ccxml+xml":["ccxml"],"application/cdmi-capability":["cdmia"],"application/cdmi-container":["cdmic"],"application/cdmi-domain":["cdmid"],"application/cdmi-object":["cdmio"],"application/cdmi-queue":["cdmiq"],"application/cu-seeme":["cu"],"application/dash+xml":["mpd"],"application/davmount+xml":["davmount"],"application/docbook+xml":["dbk"],"application/dssc+der":["dssc"],"application/dssc+xml":["xdssc"],"application/ecmascript":["ecma"],"application/emma+xml":["emma"],"application/epub+zip":["epub"],"application/exi":["exi"],"application/font-tdpfr":["pfr"],"application/font-woff":[],"application/font-woff2":[],"application/geo+json":["geojson"],"application/gml+xml":["gml"],"application/gpx+xml":["gpx"],"application/gxf":["gxf"],"application/gzip":["gz"],"application/hyperstudio":["stk"],"application/inkml+xml":["ink","inkml"],"application/ipfix":["ipfix"],"application/java-archive":["jar","war","ear"],"application/java-serialized-object":["ser"],"application/java-vm":["class"],"application/javascript":["js","mjs"],"application/json":["json","map"],"application/json5":["json5"],"application/jsonml+json":["jsonml"],"application/ld+json":["jsonld"],"application/lost+xml":["lostxml"],"application/mac-binhex40":["hqx"],"application/mac-compactpro":["cpt"],"application/mads+xml":["mads"],"application/manifest+json":["webmanifest"],"application/marc":["mrc"],"application/marcxml+xml":["mrcx"],"application/mathematica":["ma","nb","mb"],"application/mathml+xml":["mathml"],"application/mbox":["mbox"],"application/mediaservercontrol+xml":["mscml"],"application/metalink+xml":["metalink"],"application/metalink4+xml":["meta4"],"application/mets+xml":["mets"],"application/mods+xml":["mods"],"application/mp21":["m21","mp21"],"application/mp4":["mp4s","m4p"],"application/msword":["doc","dot"],"application/mxf":["mxf"],"application/octet-stream":["bin","dms","lrf","mar","so","dist","distz","pkg","bpk","dump","elc","deploy","exe","dll","deb","dmg","iso","img","msi","msp","msm","buffer"],"application/oda":["oda"],"application/oebps-package+xml":["opf"],"application/ogg":["ogx"],"application/omdoc+xml":["omdoc"],"application/onenote":["onetoc","onetoc2","onetmp","onepkg"],"application/oxps":["oxps"],"application/patch-ops-error+xml":["xer"],"application/pdf":["pdf"],"application/pgp-encrypted":["pgp"],"application/pgp-signature":["asc","sig"],"application/pics-rules":["prf"],"application/pkcs10":["p10"],"application/pkcs7-mime":["p7m","p7c"],"application/pkcs7-signature":["p7s"],"application/pkcs8":["p8"],"application/pkix-attr-cert":["ac"],"application/pkix-cert":["cer"],"application/pkix-crl":["crl"],"application/pkix-pkipath":["pkipath"],"application/pkixcmp":["pki"],"application/pls+xml":["pls"],"application/postscript":["ai","eps","ps"],"application/prs.cww":["cww"],"application/pskc+xml":["pskcxml"],"application/raml+yaml":["raml"],"application/rdf+xml":["rdf"],"application/reginfo+xml":["rif"],"application/relax-ng-compact-syntax":["rnc"],"application/resource-lists+xml":["rl"],"application/resource-lists-diff+xml":["rld"],"application/rls-services+xml":["rs"],"application/rpki-ghostbusters":["gbr"],"application/rpki-manifest":["mft"],"application/rpki-roa":["roa"],"application/rsd+xml":["rsd"],"application/rss+xml":["rss"],"application/rtf":["rtf"],"application/sbml+xml":["sbml"],"application/scvp-cv-request":["scq"],"application/scvp-cv-response":["scs"],"application/scvp-vp-request":["spq"],"application/scvp-vp-response":["spp"],"application/sdp":["sdp"],"application/set-payment-initiation":["setpay"],"application/set-registration-initiation":["setreg"],"application/shf+xml":["shf"],"application/smil+xml":["smi","smil"],"application/sparql-query":["rq"],"application/sparql-results+xml":["srx"],"application/srgs":["gram"],"application/srgs+xml":["grxml"],"application/sru+xml":["sru"],"application/ssdl+xml":["ssdl"],"application/ssml+xml":["ssml"],"application/tei+xml":["tei","teicorpus"],"application/thraud+xml":["tfi"],"application/timestamped-data":["tsd"],"application/vnd.3gpp.pic-bw-large":["plb"],"application/vnd.3gpp.pic-bw-small":["psb"],"application/vnd.3gpp.pic-bw-var":["pvb"],"application/vnd.3gpp2.tcap":["tcap"],"application/vnd.3m.post-it-notes":["pwn"],"application/vnd.accpac.simply.aso":["aso"],"application/vnd.accpac.simply.imp":["imp"],"application/vnd.acucobol":["acu"],"application/vnd.acucorp":["atc","acutc"],"application/vnd.adobe.air-application-installer-package+zip":["air"],"application/vnd.adobe.formscentral.fcdt":["fcdt"],"application/vnd.adobe.fxp":["fxp","fxpl"],"application/vnd.adobe.xdp+xml":["xdp"],"application/vnd.adobe.xfdf":["xfdf"],"application/vnd.ahead.space":["ahead"],"application/vnd.airzip.filesecure.azf":["azf"],"application/vnd.airzip.filesecure.azs":["azs"],"application/vnd.amazon.ebook":["azw"],"application/vnd.americandynamics.acc":["acc"],"application/vnd.amiga.ami":["ami"],"application/vnd.android.package-archive":["apk"],"application/vnd.anser-web-certificate-issue-initiation":["cii"],"application/vnd.anser-web-funds-transfer-initiation":["fti"],"application/vnd.antix.game-component":["atx"],"application/vnd.apple.installer+xml":["mpkg"],"application/vnd.apple.mpegurl":["m3u8"],"application/vnd.apple.pkpass":["pkpass"],"application/vnd.aristanetworks.swi":["swi"],"application/vnd.astraea-software.iota":["iota"],"application/vnd.audiograph":["aep"],"application/vnd.blueice.multipass":["mpm"],"application/vnd.bmi":["bmi"],"application/vnd.businessobjects":["rep"],"application/vnd.chemdraw+xml":["cdxml"],"application/vnd.chipnuts.karaoke-mmd":["mmd"],"application/vnd.cinderella":["cdy"],"application/vnd.claymore":["cla"],"application/vnd.cloanto.rp9":["rp9"],"application/vnd.clonk.c4group":["c4g","c4d","c4f","c4p","c4u"],"application/vnd.cluetrust.cartomobile-config":["c11amc"],"application/vnd.cluetrust.cartomobile-config-pkg":["c11amz"],"application/vnd.commonspace":["csp"],"application/vnd.contact.cmsg":["cdbcmsg"],"application/vnd.cosmocaller":["cmc"],"application/vnd.crick.clicker":["clkx"],"application/vnd.crick.clicker.keyboard":["clkk"],"application/vnd.crick.clicker.palette":["clkp"],"application/vnd.crick.clicker.template":["clkt"],"application/vnd.crick.clicker.wordbank":["clkw"],"application/vnd.criticaltools.wbs+xml":["wbs"],"application/vnd.ctc-posml":["pml"],"application/vnd.cups-ppd":["ppd"],"application/vnd.curl.car":["car"],"application/vnd.curl.pcurl":["pcurl"],"application/vnd.dart":["dart"],"application/vnd.data-vision.rdz":["rdz"],"application/vnd.dece.data":["uvf","uvvf","uvd","uvvd"],"application/vnd.dece.ttml+xml":["uvt","uvvt"],"application/vnd.dece.unspecified":["uvx","uvvx"],"application/vnd.dece.zip":["uvz","uvvz"],"application/vnd.denovo.fcselayout-link":["fe_launch"],"application/vnd.dna":["dna"],"application/vnd.dolby.mlp":["mlp"],"application/vnd.dpgraph":["dpg"],"application/vnd.dreamfactory":["dfac"],"application/vnd.ds-keypoint":["kpxx"],"application/vnd.dvb.ait":["ait"],"application/vnd.dvb.service":["svc"],"application/vnd.dynageo":["geo"],"application/vnd.ecowin.chart":["mag"],"application/vnd.enliven":["nml"],"application/vnd.epson.esf":["esf"],"application/vnd.epson.msf":["msf"],"application/vnd.epson.quickanime":["qam"],"application/vnd.epson.salt":["slt"],"application/vnd.epson.ssf":["ssf"],"application/vnd.eszigno3+xml":["es3","et3"],"application/vnd.ezpix-album":["ez2"],"application/vnd.ezpix-package":["ez3"],"application/vnd.fdf":["fdf"],"application/vnd.fdsn.mseed":["mseed"],"application/vnd.fdsn.seed":["seed","dataless"],"application/vnd.flographit":["gph"],"application/vnd.fluxtime.clip":["ftc"],"application/vnd.framemaker":["fm","frame","maker","book"],"application/vnd.frogans.fnc":["fnc"],"application/vnd.frogans.ltf":["ltf"],"application/vnd.fsc.weblaunch":["fsc"],"application/vnd.fujitsu.oasys":["oas"],"application/vnd.fujitsu.oasys2":["oa2"],"application/vnd.fujitsu.oasys3":["oa3"],"application/vnd.fujitsu.oasysgp":["fg5"],"application/vnd.fujitsu.oasysprs":["bh2"],"application/vnd.fujixerox.ddd":["ddd"],"application/vnd.fujixerox.docuworks":["xdw"],"application/vnd.fujixerox.docuworks.binder":["xbd"],"application/vnd.fuzzysheet":["fzs"],"application/vnd.genomatix.tuxedo":["txd"],"application/vnd.geogebra.file":["ggb"],"application/vnd.geogebra.tool":["ggt"],"application/vnd.geometry-explorer":["gex","gre"],"application/vnd.geonext":["gxt"],"application/vnd.geoplan":["g2w"],"application/vnd.geospace":["g3w"],"application/vnd.gmx":["gmx"],"application/vnd.google-apps.document":["gdoc"],"application/vnd.google-apps.presentation":["gslides"],"application/vnd.google-apps.spreadsheet":["gsheet"],"application/vnd.google-earth.kml+xml":["kml"],"application/vnd.google-earth.kmz":["kmz"],"application/vnd.grafeq":["gqf","gqs"],"application/vnd.groove-account":["gac"],"application/vnd.groove-help":["ghf"],"application/vnd.groove-identity-message":["gim"],"application/vnd.groove-injector":["grv"],"application/vnd.groove-tool-message":["gtm"],"application/vnd.groove-tool-template":["tpl"],"application/vnd.groove-vcard":["vcg"],"application/vnd.hal+xml":["hal"],"application/vnd.handheld-entertainment+xml":["zmm"],"application/vnd.hbci":["hbci"],"application/vnd.hhe.lesson-player":["les"],"application/vnd.hp-hpgl":["hpgl"],"application/vnd.hp-hpid":["hpid"],"application/vnd.hp-hps":["hps"],"application/vnd.hp-jlyt":["jlt"],"application/vnd.hp-pcl":["pcl"],"application/vnd.hp-pclxl":["pclxl"],"application/vnd.hydrostatix.sof-data":["sfd-hdstx"],"application/vnd.ibm.minipay":["mpy"],"application/vnd.ibm.modcap":["afp","listafp","list3820"],"application/vnd.ibm.rights-management":["irm"],"application/vnd.ibm.secure-container":["sc"],"application/vnd.iccprofile":["icc","icm"],"application/vnd.igloader":["igl"],"application/vnd.immervision-ivp":["ivp"],"application/vnd.immervision-ivu":["ivu"],"application/vnd.insors.igm":["igm"],"application/vnd.intercon.formnet":["xpw","xpx"],"application/vnd.intergeo":["i2g"],"application/vnd.intu.qbo":["qbo"],"application/vnd.intu.qfx":["qfx"],"application/vnd.ipunplugged.rcprofile":["rcprofile"],"application/vnd.irepository.package+xml":["irp"],"application/vnd.is-xpr":["xpr"],"application/vnd.isac.fcs":["fcs"],"application/vnd.jam":["jam"],"application/vnd.jcp.javame.midlet-rms":["rms"],"application/vnd.jisp":["jisp"],"application/vnd.joost.joda-archive":["joda"],"application/vnd.kahootz":["ktz","ktr"],"application/vnd.kde.karbon":["karbon"],"application/vnd.kde.kchart":["chrt"],"application/vnd.kde.kformula":["kfo"],"application/vnd.kde.kivio":["flw"],"application/vnd.kde.kontour":["kon"],"application/vnd.kde.kpresenter":["kpr","kpt"],"application/vnd.kde.kspread":["ksp"],"application/vnd.kde.kword":["kwd","kwt"],"application/vnd.kenameaapp":["htke"],"application/vnd.kidspiration":["kia"],"application/vnd.kinar":["kne","knp"],"application/vnd.koan":["skp","skd","skt","skm"],"application/vnd.kodak-descriptor":["sse"],"application/vnd.las.las+xml":["lasxml"],"application/vnd.llamagraphics.life-balance.desktop":["lbd"],"application/vnd.llamagraphics.life-balance.exchange+xml":["lbe"],"application/vnd.lotus-1-2-3":["123"],"application/vnd.lotus-approach":["apr"],"application/vnd.lotus-freelance":["pre"],"application/vnd.lotus-notes":["nsf"],"application/vnd.lotus-organizer":["org"],"application/vnd.lotus-screencam":["scm"],"application/vnd.lotus-wordpro":["lwp"],"application/vnd.macports.portpkg":["portpkg"],"application/vnd.mcd":["mcd"],"application/vnd.medcalcdata":["mc1"],"application/vnd.mediastation.cdkey":["cdkey"],"application/vnd.mfer":["mwf"],"application/vnd.mfmp":["mfm"],"application/vnd.micrografx.flo":["flo"],"application/vnd.micrografx.igx":["igx"],"application/vnd.mif":["mif"],"application/vnd.mobius.daf":["daf"],"application/vnd.mobius.dis":["dis"],"application/vnd.mobius.mbk":["mbk"],"application/vnd.mobius.mqy":["mqy"],"application/vnd.mobius.msl":["msl"],"application/vnd.mobius.plc":["plc"],"application/vnd.mobius.txf":["txf"],"application/vnd.mophun.application":["mpn"],"application/vnd.mophun.certificate":["mpc"],"application/vnd.mozilla.xul+xml":["xul"],"application/vnd.ms-artgalry":["cil"],"application/vnd.ms-cab-compressed":["cab"],"application/vnd.ms-excel":["xls","xlm","xla","xlc","xlt","xlw"],"application/vnd.ms-excel.addin.macroenabled.12":["xlam"],"application/vnd.ms-excel.sheet.binary.macroenabled.12":["xlsb"],"application/vnd.ms-excel.sheet.macroenabled.12":["xlsm"],"application/vnd.ms-excel.template.macroenabled.12":["xltm"],"application/vnd.ms-fontobject":["eot"],"application/vnd.ms-htmlhelp":["chm"],"application/vnd.ms-ims":["ims"],"application/vnd.ms-lrm":["lrm"],"application/vnd.ms-officetheme":["thmx"],"application/vnd.ms-outlook":["msg"],"application/vnd.ms-pki.seccat":["cat"],"application/vnd.ms-pki.stl":["stl"],"application/vnd.ms-powerpoint":["ppt","pps","pot"],"application/vnd.ms-powerpoint.addin.macroenabled.12":["ppam"],"application/vnd.ms-powerpoint.presentation.macroenabled.12":["pptm"],"application/vnd.ms-powerpoint.slide.macroenabled.12":["sldm"],"application/vnd.ms-powerpoint.slideshow.macroenabled.12":["ppsm"],"application/vnd.ms-powerpoint.template.macroenabled.12":["potm"],"application/vnd.ms-project":["mpp","mpt"],"application/vnd.ms-word.document.macroenabled.12":["docm"],"application/vnd.ms-word.template.macroenabled.12":["dotm"],"application/vnd.ms-works":["wps","wks","wcm","wdb"],"application/vnd.ms-wpl":["wpl"],"application/vnd.ms-xpsdocument":["xps"],"application/vnd.mseq":["mseq"],"application/vnd.musician":["mus"],"application/vnd.muvee.style":["msty"],"application/vnd.mynfc":["taglet"],"application/vnd.neurolanguage.nlu":["nlu"],"application/vnd.nitf":["ntf","nitf"],"application/vnd.noblenet-directory":["nnd"],"application/vnd.noblenet-sealer":["nns"],"application/vnd.noblenet-web":["nnw"],"application/vnd.nokia.n-gage.data":["ngdat"],"application/vnd.nokia.n-gage.symbian.install":["n-gage"],"application/vnd.nokia.radio-preset":["rpst"],"application/vnd.nokia.radio-presets":["rpss"],"application/vnd.novadigm.edm":["edm"],"application/vnd.novadigm.edx":["edx"],"application/vnd.novadigm.ext":["ext"],"application/vnd.oasis.opendocument.chart":["odc"],"application/vnd.oasis.opendocument.chart-template":["otc"],"application/vnd.oasis.opendocument.database":["odb"],"application/vnd.oasis.opendocument.formula":["odf"],"application/vnd.oasis.opendocument.formula-template":["odft"],"application/vnd.oasis.opendocument.graphics":["odg"],"application/vnd.oasis.opendocument.graphics-template":["otg"],"application/vnd.oasis.opendocument.image":["odi"],"application/vnd.oasis.opendocument.image-template":["oti"],"application/vnd.oasis.opendocument.presentation":["odp"],"application/vnd.oasis.opendocument.presentation-template":["otp"],"application/vnd.oasis.opendocument.spreadsheet":["ods"],"application/vnd.oasis.opendocument.spreadsheet-template":["ots"],"application/vnd.oasis.opendocument.text":["odt"],"application/vnd.oasis.opendocument.text-master":["odm"],"application/vnd.oasis.opendocument.text-template":["ott"],"application/vnd.oasis.opendocument.text-web":["oth"],"application/vnd.olpc-sugar":["xo"],"application/vnd.oma.dd2+xml":["dd2"],"application/vnd.openofficeorg.extension":["oxt"],"application/vnd.openxmlformats-officedocument.presentationml.presentation":["pptx"],"application/vnd.openxmlformats-officedocument.presentationml.slide":["sldx"],"application/vnd.openxmlformats-officedocument.presentationml.slideshow":["ppsx"],"application/vnd.openxmlformats-officedocument.presentationml.template":["potx"],"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":["xlsx"],"application/vnd.openxmlformats-officedocument.spreadsheetml.template":["xltx"],"application/vnd.openxmlformats-officedocument.wordprocessingml.document":["docx"],"application/vnd.openxmlformats-officedocument.wordprocessingml.template":["dotx"],"application/vnd.osgeo.mapguide.package":["mgp"],"application/vnd.osgi.dp":["dp"],"application/vnd.osgi.subsystem":["esa"],"application/vnd.palm":["pdb","pqa","oprc"],"application/vnd.pawaafile":["paw"],"application/vnd.pg.format":["str"],"application/vnd.pg.osasli":["ei6"],"application/vnd.picsel":["efif"],"application/vnd.pmi.widget":["wg"],"application/vnd.pocketlearn":["plf"],"application/vnd.powerbuilder6":["pbd"],"application/vnd.previewsystems.box":["box"],"application/vnd.proteus.magazine":["mgz"],"application/vnd.publishare-delta-tree":["qps"],"application/vnd.pvi.ptid1":["ptid"],"application/vnd.quark.quarkxpress":["qxd","qxt","qwd","qwt","qxl","qxb"],"application/vnd.realvnc.bed":["bed"],"application/vnd.recordare.musicxml":["mxl"],"application/vnd.recordare.musicxml+xml":["musicxml"],"application/vnd.rig.cryptonote":["cryptonote"],"application/vnd.rim.cod":["cod"],"application/vnd.rn-realmedia":["rm"],"application/vnd.rn-realmedia-vbr":["rmvb"],"application/vnd.route66.link66+xml":["link66"],"application/vnd.sailingtracker.track":["st"],"application/vnd.seemail":["see"],"application/vnd.sema":["sema"],"application/vnd.semd":["semd"],"application/vnd.semf":["semf"],"application/vnd.shana.informed.formdata":["ifm"],"application/vnd.shana.informed.formtemplate":["itp"],"application/vnd.shana.informed.interchange":["iif"],"application/vnd.shana.informed.package":["ipk"],"application/vnd.simtech-mindmapper":["twd","twds"],"application/vnd.smaf":["mmf"],"application/vnd.smart.teacher":["teacher"],"application/vnd.solent.sdkm+xml":["sdkm","sdkd"],"application/vnd.spotfire.dxp":["dxp"],"application/vnd.spotfire.sfs":["sfs"],"application/vnd.stardivision.calc":["sdc"],"application/vnd.stardivision.draw":["sda"],"application/vnd.stardivision.impress":["sdd"],"application/vnd.stardivision.math":["smf"],"application/vnd.stardivision.writer":["sdw","vor"],"application/vnd.stardivision.writer-global":["sgl"],"application/vnd.stepmania.package":["smzip"],"application/vnd.stepmania.stepchart":["sm"],"application/vnd.sun.wadl+xml":["wadl"],"application/vnd.sun.xml.calc":["sxc"],"application/vnd.sun.xml.calc.template":["stc"],"application/vnd.sun.xml.draw":["sxd"],"application/vnd.sun.xml.draw.template":["std"],"application/vnd.sun.xml.impress":["sxi"],"application/vnd.sun.xml.impress.template":["sti"],"application/vnd.sun.xml.math":["sxm"],"application/vnd.sun.xml.writer":["sxw"],"application/vnd.sun.xml.writer.global":["sxg"],"application/vnd.sun.xml.writer.template":["stw"],"application/vnd.sus-calendar":["sus","susp"],"application/vnd.svd":["svd"],"application/vnd.symbian.install":["sis","sisx"],"application/vnd.syncml+xml":["xsm"],"application/vnd.syncml.dm+wbxml":["bdm"],"application/vnd.syncml.dm+xml":["xdm"],"application/vnd.tao.intent-module-archive":["tao"],"application/vnd.tcpdump.pcap":["pcap","cap","dmp"],"application/vnd.tmobile-livetv":["tmo"],"application/vnd.trid.tpt":["tpt"],"application/vnd.triscape.mxs":["mxs"],"application/vnd.trueapp":["tra"],"application/vnd.ufdl":["ufd","ufdl"],"application/vnd.uiq.theme":["utz"],"application/vnd.umajin":["umj"],"application/vnd.unity":["unityweb"],"application/vnd.uoml+xml":["uoml"],"application/vnd.vcx":["vcx"],"application/vnd.visio":["vsd","vst","vss","vsw"],"application/vnd.visionary":["vis"],"application/vnd.vsf":["vsf"],"application/vnd.wap.wbxml":["wbxml"],"application/vnd.wap.wmlc":["wmlc"],"application/vnd.wap.wmlscriptc":["wmlsc"],"application/vnd.webturbo":["wtb"],"application/vnd.wolfram.player":["nbp"],"application/vnd.wordperfect":["wpd"],"application/vnd.wqd":["wqd"],"application/vnd.wt.stf":["stf"],"application/vnd.xara":["xar"],"application/vnd.xfdl":["xfdl"],"application/vnd.yamaha.hv-dic":["hvd"],"application/vnd.yamaha.hv-script":["hvs"],"application/vnd.yamaha.hv-voice":["hvp"],"application/vnd.yamaha.openscoreformat":["osf"],"application/vnd.yamaha.openscoreformat.osfpvg+xml":["osfpvg"],"application/vnd.yamaha.smaf-audio":["saf"],"application/vnd.yamaha.smaf-phrase":["spf"],"application/vnd.yellowriver-custom-menu":["cmp"],"application/vnd.zul":["zir","zirz"],"application/vnd.zzazz.deck+xml":["zaz"],"application/voicexml+xml":["vxml"],"application/wasm":["wasm"],"application/widget":["wgt"],"application/winhlp":["hlp"],"application/wsdl+xml":["wsdl"],"application/wspolicy+xml":["wspolicy"],"application/x-7z-compressed":["7z"],"application/x-abiword":["abw"],"application/x-ace-compressed":["ace"],"application/x-apple-diskimage":[],"application/x-arj":["arj"],"application/x-authorware-bin":["aab","x32","u32","vox"],"application/x-authorware-map":["aam"],"application/x-authorware-seg":["aas"],"application/x-bcpio":["bcpio"],"application/x-bdoc":[],"application/x-bittorrent":["torrent"],"application/x-blorb":["blb","blorb"],"application/x-bzip":["bz"],"application/x-bzip2":["bz2","boz"],"application/x-cbr":["cbr","cba","cbt","cbz","cb7"],"application/x-cdlink":["vcd"],"application/x-cfs-compressed":["cfs"],"application/x-chat":["chat"],"application/x-chess-pgn":["pgn"],"application/x-chrome-extension":["crx"],"application/x-cocoa":["cco"],"application/x-conference":["nsc"],"application/x-cpio":["cpio"],"application/x-csh":["csh"],"application/x-debian-package":["udeb"],"application/x-dgc-compressed":["dgc"],"application/x-director":["dir","dcr","dxr","cst","cct","cxt","w3d","fgd","swa"],"application/x-doom":["wad"],"application/x-dtbncx+xml":["ncx"],"application/x-dtbook+xml":["dtb"],"application/x-dtbresource+xml":["res"],"application/x-dvi":["dvi"],"application/x-envoy":["evy"],"application/x-eva":["eva"],"application/x-font-bdf":["bdf"],"application/x-font-ghostscript":["gsf"],"application/x-font-linux-psf":["psf"],"application/x-font-pcf":["pcf"],"application/x-font-snf":["snf"],"application/x-font-type1":["pfa","pfb","pfm","afm"],"application/x-freearc":["arc"],"application/x-futuresplash":["spl"],"application/x-gca-compressed":["gca"],"application/x-glulx":["ulx"],"application/x-gnumeric":["gnumeric"],"application/x-gramps-xml":["gramps"],"application/x-gtar":["gtar"],"application/x-hdf":["hdf"],"application/x-httpd-php":["php"],"application/x-install-instructions":["install"],"application/x-iso9660-image":[],"application/x-java-archive-diff":["jardiff"],"application/x-java-jnlp-file":["jnlp"],"application/x-latex":["latex"],"application/x-lua-bytecode":["luac"],"application/x-lzh-compressed":["lzh","lha"],"application/x-makeself":["run"],"application/x-mie":["mie"],"application/x-mobipocket-ebook":["prc","mobi"],"application/x-ms-application":["application"],"application/x-ms-shortcut":["lnk"],"application/x-ms-wmd":["wmd"],"application/x-ms-wmz":["wmz"],"application/x-ms-xbap":["xbap"],"application/x-msaccess":["mdb"],"application/x-msbinder":["obd"],"application/x-mscardfile":["crd"],"application/x-msclip":["clp"],"application/x-msdos-program":[],"application/x-msdownload":["com","bat"],"application/x-msmediaview":["mvb","m13","m14"],"application/x-msmetafile":["wmf","emf","emz"],"application/x-msmoney":["mny"],"application/x-mspublisher":["pub"],"application/x-msschedule":["scd"],"application/x-msterminal":["trm"],"application/x-mswrite":["wri"],"application/x-netcdf":["nc","cdf"],"application/x-ns-proxy-autoconfig":["pac"],"application/x-nzb":["nzb"],"application/x-perl":["pl","pm"],"application/x-pilot":[],"application/x-pkcs12":["p12","pfx"],"application/x-pkcs7-certificates":["p7b","spc"],"application/x-pkcs7-certreqresp":["p7r"],"application/x-rar-compressed":["rar"],"application/x-redhat-package-manager":["rpm"],"application/x-research-info-systems":["ris"],"application/x-sea":["sea"],"application/x-sh":["sh"],"application/x-shar":["shar"],"application/x-shockwave-flash":["swf"],"application/x-silverlight-app":["xap"],"application/x-sql":["sql"],"application/x-stuffit":["sit"],"application/x-stuffitx":["sitx"],"application/x-subrip":["srt"],"application/x-sv4cpio":["sv4cpio"],"application/x-sv4crc":["sv4crc"],"application/x-t3vm-image":["t3"],"application/x-tads":["gam"],"application/x-tar":["tar"],"application/x-tcl":["tcl","tk"],"application/x-tex":["tex"],"application/x-tex-tfm":["tfm"],"application/x-texinfo":["texinfo","texi"],"application/x-tgif":["obj"],"application/x-ustar":["ustar"],"application/x-virtualbox-hdd":["hdd"],"application/x-virtualbox-ova":["ova"],"application/x-virtualbox-ovf":["ovf"],"application/x-virtualbox-vbox":["vbox"],"application/x-virtualbox-vbox-extpack":["vbox-extpack"],"application/x-virtualbox-vdi":["vdi"],"application/x-virtualbox-vhd":["vhd"],"application/x-virtualbox-vmdk":["vmdk"],"application/x-wais-source":["src"],"application/x-web-app-manifest+json":["webapp"],"application/x-x509-ca-cert":["der","crt","pem"],"application/x-xfig":["fig"],"application/x-xliff+xml":["xlf"],"application/x-xpinstall":["xpi"],"application/x-xz":["xz"],"application/x-zmachine":["z1","z2","z3","z4","z5","z6","z7","z8"],"application/xaml+xml":["xaml"],"application/xcap-diff+xml":["xdf"],"application/xenc+xml":["xenc"],"application/xhtml+xml":["xhtml","xht"],"application/xml":["xml","xsl","xsd","rng"],"application/xml-dtd":["dtd"],"application/xop+xml":["xop"],"application/xproc+xml":["xpl"],"application/xslt+xml":["xslt"],"application/xspf+xml":["xspf"],"application/xv+xml":["mxml","xhvml","xvml","xvm"],"application/yang":["yang"],"application/yin+xml":["yin"],"application/zip":["zip"],"audio/3gpp":[],"audio/adpcm":["adp"],"audio/basic":["au","snd"],"audio/midi":["mid","midi","kar","rmi"],"audio/mp3":[],"audio/mp4":["m4a","mp4a"],"audio/mpeg":["mpga","mp2","mp2a","mp3","m2a","m3a"],"audio/ogg":["oga","ogg","spx"],"audio/s3m":["s3m"],"audio/silk":["sil"],"audio/vnd.dece.audio":["uva","uvva"],"audio/vnd.digital-winds":["eol"],"audio/vnd.dra":["dra"],"audio/vnd.dts":["dts"],"audio/vnd.dts.hd":["dtshd"],"audio/vnd.lucent.voice":["lvp"],"audio/vnd.ms-playready.media.pya":["pya"],"audio/vnd.nuera.ecelp4800":["ecelp4800"],"audio/vnd.nuera.ecelp7470":["ecelp7470"],"audio/vnd.nuera.ecelp9600":["ecelp9600"],"audio/vnd.rip":["rip"],"audio/wav":["wav"],"audio/wave":[],"audio/webm":["weba"],"audio/x-aac":["aac"],"audio/x-aiff":["aif","aiff","aifc"],"audio/x-caf":["caf"],"audio/x-flac":["flac"],"audio/x-m4a":[],"audio/x-matroska":["mka"],"audio/x-mpegurl":["m3u"],"audio/x-ms-wax":["wax"],"audio/x-ms-wma":["wma"],"audio/x-pn-realaudio":["ram","ra"],"audio/x-pn-realaudio-plugin":["rmp"],"audio/x-realaudio":[],"audio/x-wav":[],"audio/xm":["xm"],"chemical/x-cdx":["cdx"],"chemical/x-cif":["cif"],"chemical/x-cmdf":["cmdf"],"chemical/x-cml":["cml"],"chemical/x-csml":["csml"],"chemical/x-xyz":["xyz"],"font/collection":["ttc"],"font/otf":["otf"],"font/ttf":["ttf"],"font/woff":["woff"],"font/woff2":["woff2"],"image/apng":["apng"],"image/bmp":["bmp"],"image/cgm":["cgm"],"image/g3fax":["g3"],"image/gif":["gif"],"image/ief":["ief"],"image/jp2":["jp2","jpg2"],"image/jpeg":["jpeg","jpg","jpe"],"image/jpm":["jpm"],"image/jpx":["jpx","jpf"],"image/ktx":["ktx"],"image/png":["png"],"image/prs.btif":["btif"],"image/sgi":["sgi"],"image/svg+xml":["svg","svgz"],"image/tiff":["tiff","tif"],"image/vnd.adobe.photoshop":["psd"],"image/vnd.dece.graphic":["uvi","uvvi","uvg","uvvg"],"image/vnd.djvu":["djvu","djv"],"image/vnd.dvb.subtitle":[],"image/vnd.dwg":["dwg"],"image/vnd.dxf":["dxf"],"image/vnd.fastbidsheet":["fbs"],"image/vnd.fpx":["fpx"],"image/vnd.fst":["fst"],"image/vnd.fujixerox.edmics-mmr":["mmr"],"image/vnd.fujixerox.edmics-rlc":["rlc"],"image/vnd.ms-modi":["mdi"],"image/vnd.ms-photo":["wdp"],"image/vnd.net-fpx":["npx"],"image/vnd.wap.wbmp":["wbmp"],"image/vnd.xiff":["xif"],"image/webp":["webp"],"image/x-3ds":["3ds"],"image/x-cmu-raster":["ras"],"image/x-cmx":["cmx"],"image/x-freehand":["fh","fhc","fh4","fh5","fh7"],"image/x-icon":["ico"],"image/x-jng":["jng"],"image/x-mrsid-image":["sid"],"image/x-ms-bmp":[],"image/x-pcx":["pcx"],"image/x-pict":["pic","pct"],"image/x-portable-anymap":["pnm"],"image/x-portable-bitmap":["pbm"],"image/x-portable-graymap":["pgm"],"image/x-portable-pixmap":["ppm"],"image/x-rgb":["rgb"],"image/x-tga":["tga"],"image/x-xbitmap":["xbm"],"image/x-xpixmap":["xpm"],"image/x-xwindowdump":["xwd"],"message/rfc822":["eml","mime"],"model/gltf+json":["gltf"],"model/gltf-binary":["glb"],"model/iges":["igs","iges"],"model/mesh":["msh","mesh","silo"],"model/vnd.collada+xml":["dae"],"model/vnd.dwf":["dwf"],"model/vnd.gdl":["gdl"],"model/vnd.gtw":["gtw"],"model/vnd.mts":["mts"],"model/vnd.vtu":["vtu"],"model/vrml":["wrl","vrml"],"model/x3d+binary":["x3db","x3dbz"],"model/x3d+vrml":["x3dv","x3dvz"],"model/x3d+xml":["x3d","x3dz"],"text/cache-manifest":["appcache","manifest"],"text/calendar":["ics","ifb"],"text/coffeescript":["coffee","litcoffee"],"text/css":["css"],"text/csv":["csv"],"text/hjson":["hjson"],"text/html":["html","htm","shtml"],"text/jade":["jade"],"text/jsx":["jsx"],"text/less":["less"],"text/markdown":["markdown","md"],"text/mathml":["mml"],"text/n3":["n3"],"text/plain":["txt","text","conf","def","list","log","in","ini"],"text/prs.lines.tag":["dsc"],"text/richtext":["rtx"],"text/rtf":[],"text/sgml":["sgml","sgm"],"text/slim":["slim","slm"],"text/stylus":["stylus","styl"],"text/tab-separated-values":["tsv"],"text/troff":["t","tr","roff","man","me","ms"],"text/turtle":["ttl"],"text/uri-list":["uri","uris","urls"],"text/vcard":["vcard"],"text/vnd.curl":["curl"],"text/vnd.curl.dcurl":["dcurl"],"text/vnd.curl.mcurl":["mcurl"],"text/vnd.curl.scurl":["scurl"],"text/vnd.dvb.subtitle":["sub"],"text/vnd.fly":["fly"],"text/vnd.fmi.flexstor":["flx"],"text/vnd.graphviz":["gv"],"text/vnd.in3d.3dml":["3dml"],"text/vnd.in3d.spot":["spot"],"text/vnd.sun.j2me.app-descriptor":["jad"],"text/vnd.wap.wml":["wml"],"text/vnd.wap.wmlscript":["wmls"],"text/vtt":["vtt"],"text/x-asm":["s","asm"],"text/x-c":["c","cc","cxx","cpp","h","hh","dic"],"text/x-component":["htc"],"text/x-fortran":["f","for","f77","f90"],"text/x-handlebars-template":["hbs"],"text/x-java-source":["java"],"text/x-lua":["lua"],"text/x-markdown":["mkd"],"text/x-nfo":["nfo"],"text/x-opml":["opml"],"text/x-org":[],"text/x-pascal":["p","pas"],"text/x-processing":["pde"],"text/x-sass":["sass"],"text/x-scss":["scss"],"text/x-setext":["etx"],"text/x-sfv":["sfv"],"text/x-suse-ymp":["ymp"],"text/x-uuencode":["uu"],"text/x-vcalendar":["vcs"],"text/x-vcard":["vcf"],"text/xml":[],"text/yaml":["yaml","yml"],"video/3gpp":["3gp","3gpp"],"video/3gpp2":["3g2"],"video/h261":["h261"],"video/h263":["h263"],"video/h264":["h264"],"video/jpeg":["jpgv"],"video/jpm":["jpgm"],"video/mj2":["mj2","mjp2"],"video/mp2t":["ts"],"video/mp4":["mp4","mp4v","mpg4"],"video/mpeg":["mpeg","mpg","mpe","m1v","m2v"],"video/ogg":["ogv"],"video/quicktime":["qt","mov"],"video/vnd.dece.hd":["uvh","uvvh"],"video/vnd.dece.mobile":["uvm","uvvm"],"video/vnd.dece.pd":["uvp","uvvp"],"video/vnd.dece.sd":["uvs","uvvs"],"video/vnd.dece.video":["uvv","uvvv"],"video/vnd.dvb.file":["dvb"],"video/vnd.fvt":["fvt"],"video/vnd.mpegurl":["mxu","m4u"],"video/vnd.ms-playready.media.pyv":["pyv"],"video/vnd.uvvu.mp4":["uvu","uvvu"],"video/vnd.vivo":["viv"],"video/webm":["webm"],"video/x-f4v":["f4v"],"video/x-fli":["fli"],"video/x-flv":["flv"],"video/x-m4v":["m4v"],"video/x-matroska":["mkv","mk3d","mks"],"video/x-mng":["mng"],"video/x-ms-asf":["asf","asx"],"video/x-ms-vob":["vob"],"video/x-ms-wm":["wm"],"video/x-ms-wmv":["wmv"],"video/x-ms-wmx":["wmx"],"video/x-ms-wvx":["wvx"],"video/x-msvideo":["avi"],"video/x-sgi-movie":["movie"],"video/x-smv":["smv"],"x-conference/x-cooltalk":["ice"]}
-},{}],104:[function(require,module,exports){
+},{}],102:[function(require,module,exports){
 "use strict"
 
 var compile = require("cwise-compiler")
@@ -69408,7 +69154,7 @@ exports.equals = compile({
 
 
 
-},{"cwise-compiler":15}],105:[function(require,module,exports){
+},{"cwise-compiler":13}],103:[function(require,module,exports){
 "use strict"
 
 var ndarray = require("ndarray")
@@ -69431,10 +69177,10 @@ module.exports = function convert(arr, result) {
   return result
 }
 
-},{"./doConvert.js":106,"ndarray":107}],106:[function(require,module,exports){
+},{"./doConvert.js":104,"ndarray":105}],104:[function(require,module,exports){
 module.exports=require('cwise-compiler')({"args":["array","scalar","index"],"pre":{"body":"{}","args":[],"thisVars":[],"localVars":[]},"body":{"body":"{\nvar _inline_1_v=_inline_1_arg1_,_inline_1_i\nfor(_inline_1_i=0;_inline_1_i<_inline_1_arg2_.length-1;++_inline_1_i) {\n_inline_1_v=_inline_1_v[_inline_1_arg2_[_inline_1_i]]\n}\n_inline_1_arg0_=_inline_1_v[_inline_1_arg2_[_inline_1_arg2_.length-1]]\n}","args":[{"name":"_inline_1_arg0_","lvalue":true,"rvalue":false,"count":1},{"name":"_inline_1_arg1_","lvalue":false,"rvalue":true,"count":1},{"name":"_inline_1_arg2_","lvalue":false,"rvalue":true,"count":4}],"thisVars":[],"localVars":["_inline_1_i","_inline_1_v"]},"post":{"body":"{}","args":[],"thisVars":[],"localVars":[]},"funcName":"convert","blockSize":64})
 
-},{"cwise-compiler":15}],107:[function(require,module,exports){
+},{"cwise-compiler":13}],105:[function(require,module,exports){
 var iota = require("iota-array")
 var isBuffer = require("is-buffer")
 
@@ -69779,7 +69525,7 @@ function wrappedNDArrayCtor(data, shape, stride, offset) {
 
 module.exports = wrappedNDArrayCtor
 
-},{"iota-array":97,"is-buffer":98}],108:[function(require,module,exports){
+},{"iota-array":95,"is-buffer":96}],106:[function(require,module,exports){
 (function (process,Buffer){
 // Copyright (c) 2012 Kuba Niegowski
 //
@@ -69983,7 +69729,7 @@ ChunkStream.prototype._process = function() {
 };
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":139,"buffer":73,"stream":190,"util":200}],109:[function(require,module,exports){
+},{"_process":136,"buffer":71,"stream":187,"util":196}],107:[function(require,module,exports){
 // Copyright (c) 2012 Kuba Niegowski
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -70023,7 +69769,7 @@ module.exports = {
     COLOR_ALPHA: 4
 };
 
-},{}],110:[function(require,module,exports){
+},{}],108:[function(require,module,exports){
 // Copyright (c) 2012 Kuba Niegowski
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -70104,7 +69850,7 @@ for (var i = 0; i < 256; i++) {
     crcTable[i] = c;
 }
 
-},{"stream":190,"util":200}],111:[function(require,module,exports){
+},{"stream":187,"util":196}],109:[function(require,module,exports){
 (function (Buffer){
 // Copyright (c) 2012 Kuba Niegowski
 //
@@ -70422,7 +70168,7 @@ var PaethPredictor = function(left, above, upLeft) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./chunkstream":108,"buffer":73,"util":200,"zlib":71}],112:[function(require,module,exports){
+},{"./chunkstream":106,"buffer":71,"util":196,"zlib":69}],110:[function(require,module,exports){
 (function (Buffer){
 // Copyright (c) 2012 Kuba Niegowski
 //
@@ -70536,7 +70282,7 @@ Packer.prototype._packIEND = function() {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":109,"./crc":110,"./filter":111,"buffer":73,"stream":190,"util":200,"zlib":71}],113:[function(require,module,exports){
+},{"./constants":107,"./crc":108,"./filter":109,"buffer":71,"stream":187,"util":196,"zlib":69}],111:[function(require,module,exports){
 (function (Buffer){
 // Copyright (c) 2012 Kuba Niegowski
 //
@@ -70899,7 +70645,7 @@ Parser.prototype._reverseFiltered = function(data, width, height) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./chunkstream":108,"./constants":109,"./crc":110,"./filter":111,"buffer":73,"util":200,"zlib":71}],114:[function(require,module,exports){
+},{"./chunkstream":106,"./constants":107,"./crc":108,"./filter":109,"buffer":71,"util":196,"zlib":69}],112:[function(require,module,exports){
 (function (process,Buffer){
 // Copyright (c) 2012 Kuba Niegowski
 //
@@ -71052,7 +70798,7 @@ PNG.prototype.bitblt = function(dst, sx, sy, w, h, dx, dy) {
 };
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"./packer":112,"./parser":113,"_process":139,"buffer":73,"stream":190,"util":200}],115:[function(require,module,exports){
+},{"./packer":110,"./parser":111,"_process":136,"buffer":71,"stream":187,"util":196}],113:[function(require,module,exports){
 // (c) Dean McNamee <dean@gmail.com>, 2013.
 //
 // https://github.com/deanm/omggif
@@ -71861,281 +71607,7 @@ function GifReaderLZWOutputIndexStream(code_stream, p, output, output_length) {
 // CommonJS.
 try { exports.GifWriter = GifWriter; exports.GifReader = GifReader } catch(e) {}
 
-},{}],116:[function(require,module,exports){
-(function (process){
-/**
- * Pace
- *
- * A progress bar for the command-line.
- *
- * Example usage:
- *
- *     var total = 50000,
- *         count = 0,
- *         pace = require('pace')(total);
- *
- *     while (count++ < total) {
- *       pace.op();
- *
- *       // Cause some work to be done.
- *       for (var i = 0; i < 1000000; i++) {
- *         count = count;
- *       }
- *     }
- */
-
-// Module dependencies.
-var charm = require('charm');
-
-/**
- * Pace 'class'.
- */
-function Pace(options) {
-  options = options || {};
-
-  // Total number of items to process.
-  if (!options.total) {
-    throw new Error('You MUST specify the total number of operations that will be processed.');
-  }
-  this.total = options.total;
-
-  // Current item number.
-  this.current = 0;
-
-  // Maximum percent of total time the progressbar is allowed to take during processing.
-  // Defaults to 0.5%
-  this.max_burden = options.maxBurden || 0.5;
-
-  // Whether to show current burden %.
-  this.show_burden = options.showBurden || false;
-
-  // Internal time tracking properties.
-  this.started = false;
-  this.size = 50;
-  this.inner_time = 0;
-  this.outer_time = 0;
-  this.elapsed = 0;
-  this.time_start = 0;
-  this.time_end = 0;
-  this.time_left = 0;
-  this.time_burden = 0;
-  this.skip_steps = 0;
-  this.skipped = 0;
-  this.aborted = false;
-
-  // Setup charm.
-  this.charm = charm();
-  this.charm.pipe(process.stdout);
-
-  // Prepare the output.
-  this.charm.write("\n\n\n");
-}
-
-/**
- * Export a factory function for new pace instances.
- */
-module.exports = function(options) {
-  if (typeof options === 'number') {
-    options = {
-      total: options
-    };
-  }
-  return new Pace(options);
-};
-
-/**
- * An operation has been emitted.
- */
-Pace.prototype.op = function op(count) {
-  if (count) {
-    this.current = count;
-  }
-  else {
-    this.current++;
-  }
-
-  if (this.burdenReached()) {
-    return;
-  }
-
-  // Record the start time of the whole task.
-  if (!this.started) {
-    this.started = new Date().getTime();
-  }
-
-  // Record start time.
-  this.time_start = new Date().getTime();
-
-  this.updateTimes();
-  this.clear();
-  this.outputProgress();
-  this.outputStats();
-  this.outputTimes();
-
-  // The task is complete.
-  if (this.current >= this.total) {
-    this.finished();
-  }
-
-  // Record end time.
-  this.time_end = new Date().getTime();
-  this.inner_time = this.time_end - this.time_start;
-};
-
-/**
- * Update times.
- */
-Pace.prototype.updateTimes = function updateTimes() {
-  this.elapsed = this.time_start - this.started;
-  if (this.time_end > 0) {
-    this.outer_time = this.time_start - this.time_end;
-  }
-  if (this.inner_time > 0 && this.outer_time > 0) {
-    // Set Current Burden
-    this.time_burden = (this.inner_time / (this.inner_time + this.outer_time)) * 100;
-
-    // Estimate time left.
-    this.time_left = (this.elapsed / this.current) * (this.total - this.current);
-
-    if (this.time_left < 0) this.time_left = 0;
-  }
-  // If our "burden" is too high, increase the skip steps.
-  if (this.time_burden > this.max_burden && (this.skip_steps < (this.total / this.size))) {
-    this.skip_steps = Math.floor(++this.skip_steps * 1.3);
-  }
-};
-
-/**
- * Move the cursor back to the beginning and clear old output.
- */
-Pace.prototype.clear = function clear() {
-  this.charm.erase('line').up(1).erase('line').up(1).erase('line').write("\r");
-};
-
-/**
- * Output the progress bar.
- */
-Pace.prototype.outputProgress = function outputProgress() {
-  this.charm.write('Processing: ');
-  this.charm.foreground('green').background('green');
-  for (var i = 0; i < ((this.current / this.total) * this.size) - 1 ; i++) {
-     this.charm.write(' ');
-  }
-  this.charm.foreground('white').background('white');
-  while (i < this.size - 1) {
-    this.charm.write(' ');
-    i++;
-  }
-  this.charm.display('reset').down(1).left(100);
-};
-
-/**
- * Output numerical progress stats.
- */
-Pace.prototype.outputStats = function outputStats() {
-  this.perc = (this.current/this.total)*100;
-  this.perc = padLeft(this.perc.toFixed(2), 2);
-  this.charm.write('            ').display('bright').write(this.perc + '%').display('reset');
-  this.total_len = formatNumber(this.total).length;
-  this.charm.write('   ').display('bright').write(padLeft(formatNumber(this.current), this.total_len)).display('reset');
-  this.charm.write('/' + formatNumber(this.total));
-
-  // Output burden.
-  if (this.show_burden) {
-    this.charm.write('    ').display('bright').write('Burden: ').display('reset');
-    this.charm.write(this.time_burden.toFixed(2) + '% / ' + this.skip_steps);
-  }
-
-  this.charm.display('reset').down(1).left(100);
-};
-
-/**
- * Output times.
- */
-Pace.prototype.outputTimes = function outputTimes() {
-  // Output times.
-  var hours = Math.floor(this.elapsed / (1000 * 60 * 60));
-  var min = Math.floor(((this.elapsed / 1000) % (60 * 60)) / 60);
-  var sec = Math.floor((this.elapsed / 1000) % 60);
-
-  this.charm.write('            ').display('bright').write('Elapsed: ').display('reset');
-  this.charm.write(hours + 'h ' + min + 'm ' + sec + 's');
-
-  if (this.time_left){
-    hours = Math.floor(this.time_left / (1000 * 60 * 60));
-    min = Math.floor(((this.time_left / 1000) % (60 * 60)) / 60);
-    sec = Math.ceil((this.time_left / 1000) % 60);
-
-    this.charm.write('   ').display('bright').write('Remaining: ').display('reset');
-    this.charm.write(hours + 'h ' + min + 'm ' + sec + 's');
-  }
-};
-
-/**
- * The progress has finished.
- */
-Pace.prototype.finished = function finished() {
-  this.charm.write("\n\n");
-  this.charm.write('Finished!');
-  this.charm.write("\n\n");
-};
-
-/**
- * Check if the burden threshold has been reached.
- */
-Pace.prototype.burdenReached = function burdenReached() {
-  // Skip this cycle if the burden has determined we should.
-  if ((this.skip_steps > 0) && (this.current < this.total)) {
-    if (this.skipped < this.skip_steps) {
-      this.skipped++;
-      return true;
-    }
-    else {
-      this.skipped = 0;
-    }
-  }
-  return false;
-};
-
-
-/**
- * Utility functions.
- */
-
-// Left-pad a string.
-function padLeft(str, length, pad) {
-  pad = pad || ' ';
-  while (str.length < length)
-    str = pad + str;
-  return str;
-}
-
-// Ported from php.js. Same has php's number_format().
-function formatNumber(number, decimals, dec_point, thousands_sep) {
-  number = (number + '').replace(/[^0-9+\-Ee.]/g, '');
-  var n = !isFinite(+number) ? 0 : +number,
-    prec = !isFinite(+decimals) ? 0 : Math.abs(decimals),
-    sep = (typeof thousands_sep === 'undefined') ? ',' : thousands_sep,
-    dec = (typeof dec_point === 'undefined') ? '.' : dec_point,
-    s = '',
-    toFixedFix = function (n, prec) {
-      var k = Math.pow(10, prec);
-      return '' + Math.round(n * k) / k;
-    };
-  // Fix for IE parseFloat(0.55).toFixed(0) = 0;
-  s = (prec ? toFixedFix(n, prec) : '' + Math.round(n)).split('.');
-  if (s[0].length > 3) {
-    s[0] = s[0].replace(/\B(?=(?:\d{3})+(?!\d))/g, sep);
-  }
-  if ((s[1] || '').length < prec) {
-    s[1] = s[1] || '';
-    s[1] += new Array(prec - s[1].length + 1).join('0');
-  }
-  return s.join(dec);
-}
-
-}).call(this,require('_process'))
-},{"_process":139,"charm":5}],117:[function(require,module,exports){
+},{}],114:[function(require,module,exports){
 (function (process){
 // .dirname, .basename, and .extname methods are extracted from Node.js v8.11.1,
 // backported and transplited with Babel, with backwards-compat fixes
@@ -72441,7 +71913,7 @@ var substr = 'ab'.substr(-1) === 'b'
 ;
 
 }).call(this,require('_process'))
-},{"_process":139}],118:[function(require,module,exports){
+},{"_process":136}],115:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -72637,7 +72109,7 @@ exports.dataToBitMap = function(data, bitmapInfo) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./interlace":128,"buffer":73}],119:[function(require,module,exports){
+},{"./interlace":125,"buffer":71}],116:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -72705,7 +72177,7 @@ module.exports = function(data, width, height, options) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":121,"buffer":73}],120:[function(require,module,exports){
+},{"./constants":118,"buffer":71}],117:[function(require,module,exports){
 (function (process,Buffer){
 'use strict';
 
@@ -72918,7 +72390,7 @@ ChunkStream.prototype._process = function() {
 };
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":139,"buffer":73,"stream":190,"util":200}],121:[function(require,module,exports){
+},{"_process":136,"buffer":71,"stream":187,"util":196}],118:[function(require,module,exports){
 'use strict';
 
 
@@ -72954,7 +72426,7 @@ module.exports = {
   GAMMA_DIVISION: 100000
 };
 
-},{}],122:[function(require,module,exports){
+},{}],119:[function(require,module,exports){
 'use strict';
 
 var crcTable = [];
@@ -73000,7 +72472,7 @@ CrcCalculator.crc32 = function(buf) {
   return crc ^ -1;
 };
 
-},{}],123:[function(require,module,exports){
+},{}],120:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73187,7 +72659,7 @@ module.exports = function(pxData, width, height, options, bpp) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./paeth-predictor":132,"buffer":73}],124:[function(require,module,exports){
+},{"./paeth-predictor":129,"buffer":71}],121:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73216,7 +72688,7 @@ var FilterAsync = module.exports = function(bitmapInfo) {
 util.inherits(FilterAsync, ChunkStream);
 
 }).call(this,require("buffer").Buffer)
-},{"./chunkstream":120,"./filter-parse":126,"buffer":73,"util":200}],125:[function(require,module,exports){
+},{"./chunkstream":117,"./filter-parse":123,"buffer":71,"util":196}],122:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73243,7 +72715,7 @@ exports.process = function(inBuffer, bitmapInfo) {
   return Buffer.concat(outBuffers);
 };
 }).call(this,require("buffer").Buffer)
-},{"./filter-parse":126,"./sync-reader":138,"buffer":73}],126:[function(require,module,exports){
+},{"./filter-parse":123,"./sync-reader":135,"buffer":71}],123:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73418,7 +72890,7 @@ Filter.prototype._reverseFilterLine = function(rawData) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./interlace":128,"./paeth-predictor":132,"buffer":73}],127:[function(require,module,exports){
+},{"./interlace":125,"./paeth-predictor":129,"buffer":71}],124:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73511,7 +72983,7 @@ module.exports = function(indata, imageData) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],128:[function(require,module,exports){
+},{"buffer":71}],125:[function(require,module,exports){
 'use strict';
 
 // Adam 7
@@ -73599,7 +73071,7 @@ exports.getInterlaceIterator = function(width) {
     return (outerX * 4) + (outerY * width * 4);
   };
 };
-},{}],129:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73648,7 +73120,7 @@ PackerAsync.prototype.pack = function(data, width, height, gamma) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":121,"./packer":131,"buffer":73,"stream":190,"util":200}],130:[function(require,module,exports){
+},{"./constants":118,"./packer":128,"buffer":71,"stream":187,"util":196}],127:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73700,7 +73172,7 @@ module.exports = function(metaData, opt) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":121,"./packer":131,"buffer":73,"zlib":71}],131:[function(require,module,exports){
+},{"./constants":118,"./packer":128,"buffer":71,"zlib":69}],128:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -73795,7 +73267,7 @@ Packer.prototype.packIEND = function() {
   return this._packChunk(constants.TYPE_IEND, null);
 };
 }).call(this,require("buffer").Buffer)
-},{"./bitpacker":119,"./constants":121,"./crc":122,"./filter-pack":123,"buffer":73,"zlib":71}],132:[function(require,module,exports){
+},{"./bitpacker":116,"./constants":118,"./crc":119,"./filter-pack":120,"buffer":71,"zlib":69}],129:[function(require,module,exports){
 'use strict';
 
 module.exports = function paethPredictor(left, above, upLeft) {
@@ -73813,7 +73285,7 @@ module.exports = function paethPredictor(left, above, upLeft) {
   }
   return upLeft;
 };
-},{}],133:[function(require,module,exports){
+},{}],130:[function(require,module,exports){
 'use strict';
 
 var util = require('util');
@@ -73925,7 +73397,7 @@ ParserAsync.prototype._complete = function(filteredData) {
   this.emit('parsed', normalisedBitmapData);
 };
 
-},{"./bitmapper":118,"./chunkstream":120,"./filter-parse-async":124,"./format-normaliser":127,"./parser":135,"util":200,"zlib":71}],134:[function(require,module,exports){
+},{"./bitmapper":115,"./chunkstream":117,"./filter-parse-async":121,"./format-normaliser":124,"./parser":132,"util":196,"zlib":69}],131:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -74020,7 +73492,7 @@ module.exports = function(buffer, options) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./bitmapper":118,"./filter-parse-sync":125,"./format-normaliser":127,"./parser":135,"./sync-reader":138,"buffer":73,"zlib":71}],135:[function(require,module,exports){
+},{"./bitmapper":115,"./filter-parse-sync":122,"./format-normaliser":124,"./parser":132,"./sync-reader":135,"buffer":71,"zlib":69}],132:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -74314,7 +73786,7 @@ Parser.prototype._parseIEND = function(data) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./constants":121,"./crc":122,"buffer":73}],136:[function(require,module,exports){
+},{"./constants":118,"./crc":119,"buffer":71}],133:[function(require,module,exports){
 'use strict';
 
 
@@ -74332,7 +73804,7 @@ exports.write = function(png) {
   return pack(png);
 };
 
-},{"./packer-sync":130,"./parser-sync":134}],137:[function(require,module,exports){
+},{"./packer-sync":127,"./parser-sync":131}],134:[function(require,module,exports){
 (function (process,Buffer){
 'use strict';
 
@@ -74499,7 +73971,7 @@ PNG.prototype.adjustGamma = function() {
 };
 
 }).call(this,require('_process'),require("buffer").Buffer)
-},{"./packer-async":129,"./parser-async":133,"./png-sync":136,"_process":139,"buffer":73,"stream":190,"util":200}],138:[function(require,module,exports){
+},{"./packer-async":126,"./parser-async":130,"./png-sync":133,"_process":136,"buffer":71,"stream":187,"util":196}],135:[function(require,module,exports){
 'use strict';
 
 var SyncReader = module.exports = function(buffer) {
@@ -74552,7 +74024,7 @@ SyncReader.prototype.process = function() {
 
 };
 
-},{}],139:[function(require,module,exports){
+},{}],136:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -74738,7 +74210,7 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],140:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 
 var canPromise = require('./can-promise')
 
@@ -74816,7 +74288,7 @@ exports.toString = renderCanvas.bind(null, function (data, _, opts) {
   return SvgRenderer.render(data, opts)
 })
 
-},{"./can-promise":141,"./core/qrcode":157,"./renderer/canvas":164,"./renderer/svg-tag.js":165}],141:[function(require,module,exports){
+},{"./can-promise":138,"./core/qrcode":154,"./renderer/canvas":161,"./renderer/svg-tag.js":162}],138:[function(require,module,exports){
 // can-promise has a crash in some versions of react native that dont have
 // standard global objects
 // https://github.com/soldair/node-qrcode/issues/157
@@ -74825,7 +74297,7 @@ module.exports = function () {
   return typeof Promise === 'function' && Promise.prototype && Promise.prototype.then
 }
 
-},{}],142:[function(require,module,exports){
+},{}],139:[function(require,module,exports){
 /**
  * Alignment pattern are fixed reference pattern in defined positions
  * in a matrix symbology, which enables the decode software to re-synchronise
@@ -74910,7 +74382,7 @@ exports.getPositions = function getPositions (version) {
   return coords
 }
 
-},{"./utils":161}],143:[function(require,module,exports){
+},{"./utils":158}],140:[function(require,module,exports){
 var Mode = require('./mode')
 
 /**
@@ -74971,7 +74443,7 @@ AlphanumericData.prototype.write = function write (bitBuffer) {
 
 module.exports = AlphanumericData
 
-},{"./mode":154}],144:[function(require,module,exports){
+},{"./mode":151}],141:[function(require,module,exports){
 function BitBuffer () {
   this.buffer = []
   this.length = 0
@@ -75010,7 +74482,7 @@ BitBuffer.prototype = {
 
 module.exports = BitBuffer
 
-},{}],145:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 
 /**
@@ -75081,7 +74553,7 @@ BitMatrix.prototype.isReserved = function (row, col) {
 
 module.exports = BitMatrix
 
-},{"../utils/buffer":167}],146:[function(require,module,exports){
+},{"../utils/buffer":164}],143:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 var Mode = require('./mode')
 
@@ -75110,7 +74582,7 @@ ByteData.prototype.write = function (bitBuffer) {
 
 module.exports = ByteData
 
-},{"../utils/buffer":167,"./mode":154}],147:[function(require,module,exports){
+},{"../utils/buffer":164,"./mode":151}],144:[function(require,module,exports){
 var ECLevel = require('./error-correction-level')
 
 var EC_BLOCKS_TABLE = [
@@ -75247,7 +74719,7 @@ exports.getTotalCodewordsCount = function getTotalCodewordsCount (version, error
   }
 }
 
-},{"./error-correction-level":148}],148:[function(require,module,exports){
+},{"./error-correction-level":145}],145:[function(require,module,exports){
 exports.L = { bit: 1 }
 exports.M = { bit: 0 }
 exports.Q = { bit: 3 }
@@ -75299,7 +74771,7 @@ exports.from = function from (value, defaultValue) {
   }
 }
 
-},{}],149:[function(require,module,exports){
+},{}],146:[function(require,module,exports){
 var getSymbolSize = require('./utils').getSymbolSize
 var FINDER_PATTERN_SIZE = 7
 
@@ -75323,7 +74795,7 @@ exports.getPositions = function getPositions (version) {
   ]
 }
 
-},{"./utils":161}],150:[function(require,module,exports){
+},{"./utils":158}],147:[function(require,module,exports){
 var Utils = require('./utils')
 
 var G15 = (1 << 10) | (1 << 8) | (1 << 5) | (1 << 4) | (1 << 2) | (1 << 1) | (1 << 0)
@@ -75354,7 +74826,7 @@ exports.getEncodedBits = function getEncodedBits (errorCorrectionLevel, mask) {
   return ((data << 10) | d) ^ G15_MASK
 }
 
-},{"./utils":161}],151:[function(require,module,exports){
+},{"./utils":158}],148:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 
 if(Buffer.alloc) { 
@@ -75432,7 +74904,7 @@ exports.mul = function mul (x, y) {
   return EXP_TABLE[LOG_TABLE[x] + LOG_TABLE[y]]
 }
 
-},{"../utils/buffer":167}],152:[function(require,module,exports){
+},{"../utils/buffer":164}],149:[function(require,module,exports){
 var Mode = require('./mode')
 var Utils = require('./utils')
 
@@ -75488,7 +74960,7 @@ KanjiData.prototype.write = function (bitBuffer) {
 
 module.exports = KanjiData
 
-},{"./mode":154,"./utils":161}],153:[function(require,module,exports){
+},{"./mode":151,"./utils":158}],150:[function(require,module,exports){
 /**
  * Data mask pattern reference
  * @type {Object}
@@ -75724,7 +75196,7 @@ exports.getBestMask = function getBestMask (data, setupFormatFunc) {
   return bestPattern
 }
 
-},{}],154:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 var VersionCheck = require('./version-check')
 var Regex = require('./regex')
 
@@ -75893,7 +75365,7 @@ exports.from = function from (value, defaultValue) {
   }
 }
 
-},{"./regex":159,"./version-check":162}],155:[function(require,module,exports){
+},{"./regex":156,"./version-check":159}],152:[function(require,module,exports){
 var Mode = require('./mode')
 
 function NumericData (data) {
@@ -75938,7 +75410,7 @@ NumericData.prototype.write = function write (bitBuffer) {
 
 module.exports = NumericData
 
-},{"./mode":154}],156:[function(require,module,exports){
+},{"./mode":151}],153:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 var GF = require('./galois-field')
 
@@ -76004,7 +75476,7 @@ exports.generateECPolynomial = function generateECPolynomial (degree) {
   return poly
 }
 
-},{"../utils/buffer":167,"./galois-field":151}],157:[function(require,module,exports){
+},{"../utils/buffer":164,"./galois-field":148}],154:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 var Utils = require('./utils')
 var ECLevel = require('./error-correction-level')
@@ -76505,7 +75977,7 @@ exports.create = function create (data, options) {
   return createSymbol(data, version, errorCorrectionLevel, mask)
 }
 
-},{"../utils/buffer":167,"./alignment-pattern":142,"./bit-buffer":144,"./bit-matrix":145,"./error-correction-code":147,"./error-correction-level":148,"./finder-pattern":149,"./format-info":150,"./mask-pattern":153,"./mode":154,"./reed-solomon-encoder":158,"./segments":160,"./utils":161,"./version":163,"isarray":168}],158:[function(require,module,exports){
+},{"../utils/buffer":164,"./alignment-pattern":139,"./bit-buffer":141,"./bit-matrix":142,"./error-correction-code":144,"./error-correction-level":145,"./finder-pattern":146,"./format-info":147,"./mask-pattern":150,"./mode":151,"./reed-solomon-encoder":155,"./segments":157,"./utils":158,"./version":160,"isarray":165}],155:[function(require,module,exports){
 var Buffer = require('../utils/buffer')
 var Polynomial = require('./polynomial')
 
@@ -76566,7 +76038,7 @@ ReedSolomonEncoder.prototype.encode = function encode (data) {
 
 module.exports = ReedSolomonEncoder
 
-},{"../utils/buffer":167,"./polynomial":156}],159:[function(require,module,exports){
+},{"../utils/buffer":164,"./polynomial":153}],156:[function(require,module,exports){
 var numeric = '[0-9]+'
 var alphanumeric = '[A-Z $%*+\\-./:]+'
 var kanji = '(?:[u3000-u303F]|[u3040-u309F]|[u30A0-u30FF]|' +
@@ -76599,7 +76071,7 @@ exports.testAlphanumeric = function testAlphanumeric (str) {
   return TEST_ALPHANUMERIC.test(str)
 }
 
-},{}],160:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 var Mode = require('./mode')
 var NumericData = require('./numeric-data')
 var AlphanumericData = require('./alphanumeric-data')
@@ -76931,7 +76403,7 @@ exports.rawSplit = function rawSplit (data) {
   )
 }
 
-},{"./alphanumeric-data":143,"./byte-data":146,"./kanji-data":152,"./mode":154,"./numeric-data":155,"./regex":159,"./utils":161,"dijkstrajs":19}],161:[function(require,module,exports){
+},{"./alphanumeric-data":140,"./byte-data":143,"./kanji-data":149,"./mode":151,"./numeric-data":152,"./regex":156,"./utils":158,"dijkstrajs":17}],158:[function(require,module,exports){
 var toSJISFunction
 var CODEWORDS_COUNT = [
   0, // Not used
@@ -76996,7 +76468,7 @@ exports.toSJIS = function toSJIS (kanji) {
   return toSJISFunction(kanji)
 }
 
-},{}],162:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 /**
  * Check if QR Code version is valid
  *
@@ -77007,7 +76479,7 @@ exports.isValid = function isValid (version) {
   return !isNaN(version) && version >= 1 && version <= 40
 }
 
-},{}],163:[function(require,module,exports){
+},{}],160:[function(require,module,exports){
 var Utils = require('./utils')
 var ECCode = require('./error-correction-code')
 var ECLevel = require('./error-correction-level')
@@ -77173,7 +76645,7 @@ exports.getEncodedBits = function getEncodedBits (version) {
   return (version << 12) | d
 }
 
-},{"./error-correction-code":147,"./error-correction-level":148,"./mode":154,"./utils":161,"./version-check":162,"isarray":168}],164:[function(require,module,exports){
+},{"./error-correction-code":144,"./error-correction-level":145,"./mode":151,"./utils":158,"./version-check":159,"isarray":165}],161:[function(require,module,exports){
 var Utils = require('./utils')
 
 function clearCanvas (ctx, canvas, size) {
@@ -77238,7 +76710,7 @@ exports.renderToDataURL = function renderToDataURL (qrData, canvas, options) {
   return canvasEl.toDataURL(type, rendererOpts.quality)
 }
 
-},{"./utils":166}],165:[function(require,module,exports){
+},{"./utils":163}],162:[function(require,module,exports){
 var Utils = require('./utils')
 
 function getColorAttrib (color, attrib) {
@@ -77321,7 +76793,7 @@ exports.render = function render (qrData, options, cb) {
   return svgTag
 }
 
-},{"./utils":166}],166:[function(require,module,exports){
+},{"./utils":163}],163:[function(require,module,exports){
 function hex2rgba (hex) {
   if (typeof hex !== 'string') {
     throw new Error('Color should be defined as hex string')
@@ -77416,7 +76888,7 @@ exports.qrToImageData = function qrToImageData (imgData, qr, opts) {
   }
 }
 
-},{}],167:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 /**
  * Implementation of a subset of node.js Buffer methods for the browser.
  * Based on https://github.com/feross/buffer
@@ -77930,17 +77402,17 @@ Buffer.isBuffer = function isBuffer (b) {
 
 module.exports = Buffer
 
-},{"isarray":168}],168:[function(require,module,exports){
+},{"isarray":165}],165:[function(require,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],169:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 module.exports = require('./lib/_stream_duplex.js');
 
-},{"./lib/_stream_duplex.js":170}],170:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":167}],167:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -78072,7 +77544,7 @@ Duplex.prototype._destroy = function (err, cb) {
 
   pna.nextTick(cb, err);
 };
-},{"./_stream_readable":172,"./_stream_writable":174,"core-util-is":14,"inherits":96,"process-nextick-args":179}],171:[function(require,module,exports){
+},{"./_stream_readable":169,"./_stream_writable":171,"core-util-is":12,"inherits":94,"process-nextick-args":176}],168:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -78120,7 +77592,7 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"./_stream_transform":173,"core-util-is":14,"inherits":96}],172:[function(require,module,exports){
+},{"./_stream_transform":170,"core-util-is":12,"inherits":94}],169:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -79142,7 +78614,7 @@ function indexOf(xs, x) {
   return -1;
 }
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./_stream_duplex":170,"./internal/streams/BufferList":175,"./internal/streams/destroy":176,"./internal/streams/stream":177,"_process":139,"core-util-is":14,"events":74,"inherits":96,"isarray":178,"process-nextick-args":179,"safe-buffer":185,"string_decoder/":180,"util":4}],173:[function(require,module,exports){
+},{"./_stream_duplex":167,"./internal/streams/BufferList":172,"./internal/streams/destroy":173,"./internal/streams/stream":174,"_process":136,"core-util-is":12,"events":72,"inherits":94,"isarray":175,"process-nextick-args":176,"safe-buffer":182,"string_decoder/":177,"util":4}],170:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -79357,7 +78829,7 @@ function done(stream, er, data) {
 
   return stream.push(null);
 }
-},{"./_stream_duplex":170,"core-util-is":14,"inherits":96}],174:[function(require,module,exports){
+},{"./_stream_duplex":167,"core-util-is":12,"inherits":94}],171:[function(require,module,exports){
 (function (process,global,setImmediate){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -80047,7 +79519,7 @@ Writable.prototype._destroy = function (err, cb) {
   cb(err);
 };
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
-},{"./_stream_duplex":170,"./internal/streams/destroy":176,"./internal/streams/stream":177,"_process":139,"core-util-is":14,"inherits":96,"process-nextick-args":179,"safe-buffer":185,"timers":193,"util-deprecate":198}],175:[function(require,module,exports){
+},{"./_stream_duplex":167,"./internal/streams/destroy":173,"./internal/streams/stream":174,"_process":136,"core-util-is":12,"inherits":94,"process-nextick-args":176,"safe-buffer":182,"timers":190,"util-deprecate":194}],172:[function(require,module,exports){
 'use strict';
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
@@ -80127,7 +79599,7 @@ if (util && util.inspect && util.inspect.custom) {
     return this.constructor.name + ' ' + obj;
   };
 }
-},{"safe-buffer":185,"util":4}],176:[function(require,module,exports){
+},{"safe-buffer":182,"util":4}],173:[function(require,module,exports){
 'use strict';
 
 /*<replacement>*/
@@ -80202,12 +79674,12 @@ module.exports = {
   destroy: destroy,
   undestroy: undestroy
 };
-},{"process-nextick-args":179}],177:[function(require,module,exports){
+},{"process-nextick-args":176}],174:[function(require,module,exports){
 module.exports = require('events').EventEmitter;
 
-},{"events":74}],178:[function(require,module,exports){
-arguments[4][168][0].apply(exports,arguments)
-},{"dup":168}],179:[function(require,module,exports){
+},{"events":72}],175:[function(require,module,exports){
+arguments[4][165][0].apply(exports,arguments)
+},{"dup":165}],176:[function(require,module,exports){
 (function (process){
 'use strict';
 
@@ -80255,7 +79727,7 @@ function nextTick(fn, arg1, arg2, arg3) {
 
 
 }).call(this,require('_process'))
-},{"_process":139}],180:[function(require,module,exports){
+},{"_process":136}],177:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -80552,10 +80024,10 @@ function simpleWrite(buf) {
 function simpleEnd(buf) {
   return buf && buf.length ? this.write(buf) : '';
 }
-},{"safe-buffer":185}],181:[function(require,module,exports){
+},{"safe-buffer":182}],178:[function(require,module,exports){
 module.exports = require('./readable').PassThrough
 
-},{"./readable":182}],182:[function(require,module,exports){
+},{"./readable":179}],179:[function(require,module,exports){
 exports = module.exports = require('./lib/_stream_readable.js');
 exports.Stream = exports;
 exports.Readable = exports;
@@ -80564,13 +80036,13 @@ exports.Duplex = require('./lib/_stream_duplex.js');
 exports.Transform = require('./lib/_stream_transform.js');
 exports.PassThrough = require('./lib/_stream_passthrough.js');
 
-},{"./lib/_stream_duplex.js":170,"./lib/_stream_passthrough.js":171,"./lib/_stream_readable.js":172,"./lib/_stream_transform.js":173,"./lib/_stream_writable.js":174}],183:[function(require,module,exports){
+},{"./lib/_stream_duplex.js":167,"./lib/_stream_passthrough.js":168,"./lib/_stream_readable.js":169,"./lib/_stream_transform.js":170,"./lib/_stream_writable.js":171}],180:[function(require,module,exports){
 module.exports = require('./readable').Transform
 
-},{"./readable":182}],184:[function(require,module,exports){
+},{"./readable":179}],181:[function(require,module,exports){
 module.exports = require('./lib/_stream_writable.js');
 
-},{"./lib/_stream_writable.js":174}],185:[function(require,module,exports){
+},{"./lib/_stream_writable.js":171}],182:[function(require,module,exports){
 /* eslint-disable node/no-deprecated-api */
 var buffer = require('buffer')
 var Buffer = buffer.Buffer
@@ -80634,9 +80106,9 @@ SafeBuffer.allocUnsafeSlow = function (size) {
   return buffer.SlowBuffer(size)
 }
 
-},{"buffer":73}],186:[function(require,module,exports){
-arguments[4][93][0].apply(exports,arguments)
-},{"./lib/decoder":187,"./lib/encoder":188,"dup":93}],187:[function(require,module,exports){
+},{"buffer":71}],183:[function(require,module,exports){
+arguments[4][91][0].apply(exports,arguments)
+},{"./lib/decoder":184,"./lib/encoder":185,"dup":91}],184:[function(require,module,exports){
 (function (Buffer){
 /* -*- Mode: Java; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- /
 /* vim: set shiftwidth=2 tabstop=2 autoindent cindent expandtab: */
@@ -81619,9 +81091,9 @@ function decode(jpegData) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73}],188:[function(require,module,exports){
-arguments[4][95][0].apply(exports,arguments)
-},{"buffer":73,"dup":95}],189:[function(require,module,exports){
+},{"buffer":71}],185:[function(require,module,exports){
+arguments[4][93][0].apply(exports,arguments)
+},{"buffer":71,"dup":93}],186:[function(require,module,exports){
 (function (Buffer){
 'use strict'
 
@@ -81766,7 +81238,7 @@ module.exports = function savePixels (array, type, options) {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73,"contentstream":7,"gif-encoder":30,"jpeg-js":186,"ndarray":107,"ndarray-ops":104,"pngjs-nozlib":137,"through":192}],190:[function(require,module,exports){
+},{"buffer":71,"contentstream":5,"gif-encoder":28,"jpeg-js":183,"ndarray":105,"ndarray-ops":102,"pngjs-nozlib":134,"through":189}],187:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -81895,7 +81367,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"events":74,"inherits":96,"readable-stream/duplex.js":169,"readable-stream/passthrough.js":181,"readable-stream/readable.js":182,"readable-stream/transform.js":183,"readable-stream/writable.js":184}],191:[function(require,module,exports){
+},{"events":72,"inherits":94,"readable-stream/duplex.js":166,"readable-stream/passthrough.js":178,"readable-stream/readable.js":179,"readable-stream/transform.js":180,"readable-stream/writable.js":181}],188:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -82118,7 +81590,7 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"buffer":73}],192:[function(require,module,exports){
+},{"buffer":71}],189:[function(require,module,exports){
 (function (process){
 var Stream = require('stream')
 
@@ -82230,7 +81702,7 @@ function through (write, end, opts) {
 
 
 }).call(this,require('_process'))
-},{"_process":139,"stream":190}],193:[function(require,module,exports){
+},{"_process":136,"stream":187}],190:[function(require,module,exports){
 (function (setImmediate,clearImmediate){
 var nextTick = require('process/browser.js').nextTick;
 var apply = Function.prototype.apply;
@@ -82309,20 +81781,7 @@ exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate :
   delete immediateIds[id];
 };
 }).call(this,require("timers").setImmediate,require("timers").clearImmediate)
-},{"process/browser.js":139,"timers":193}],194:[function(require,module,exports){
-exports.isatty = function () { return false; };
-
-function ReadStream() {
-  throw new Error('tty.ReadStream is not implemented');
-}
-exports.ReadStream = ReadStream;
-
-function WriteStream() {
-  throw new Error('tty.WriteStream is not implemented');
-}
-exports.WriteStream = WriteStream;
-
-},{}],195:[function(require,module,exports){
+},{"process/browser.js":136,"timers":190}],191:[function(require,module,exports){
 //     Underscore.js 1.4.4
 //     http://underscorejs.org
 //     (c) 2009-2013 Jeremy Ashkenas, DocumentCloud Inc.
@@ -83550,7 +83009,7 @@ exports.WriteStream = WriteStream;
 
 }).call(this);
 
-},{}],196:[function(require,module,exports){
+},{}],192:[function(require,module,exports){
 "use strict"
 
 function unique_pred(list, compare) {
@@ -83609,7 +83068,7 @@ function unique(list, compare, sorted) {
 
 module.exports = unique
 
-},{}],197:[function(require,module,exports){
+},{}],193:[function(require,module,exports){
 var mime = require('mime');
 var fs = require('fs');
 
@@ -83619,7 +83078,7 @@ module.exports = function urifyNode (file) {
   return 'data:' + type + ';base64,' + data;
 };
 
-},{"fs":72,"mime":102}],198:[function(require,module,exports){
+},{"fs":70,"mime":100}],194:[function(require,module,exports){
 (function (global){
 
 /**
@@ -83690,18 +83149,18 @@ function config (name) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],199:[function(require,module,exports){
-arguments[4][68][0].apply(exports,arguments)
-},{"dup":68}],200:[function(require,module,exports){
-arguments[4][69][0].apply(exports,arguments)
-},{"./support/isBuffer":199,"_process":139,"dup":69,"inherits":96}],201:[function(require,module,exports){
+},{}],195:[function(require,module,exports){
+arguments[4][66][0].apply(exports,arguments)
+},{"dup":66}],196:[function(require,module,exports){
+arguments[4][67][0].apply(exports,arguments)
+},{"./support/isBuffer":195,"_process":136,"dup":67,"inherits":94}],197:[function(require,module,exports){
 // add steps to the sequencer
 function AddStep(_sequencer, name, o) {
   return require('./InsertStep')(_sequencer, -1, name, o);
 }
 module.exports = AddStep;
 
-},{"./InsertStep":205}],202:[function(require,module,exports){
+},{"./InsertStep":201}],198:[function(require,module,exports){
 var fs = require('fs');
 var getDirectories = function(rootDir, cb) {
   fs.readdir(rootDir, function(err, files) {
@@ -83772,7 +83231,7 @@ module.exports = function ExportBin(dir = './output/', ref, basic, filename) {
   }
 };
 
-},{"data-uri-to-buffer":18,"fs":72}],203:[function(require,module,exports){
+},{"data-uri-to-buffer":16,"fs":70}],199:[function(require,module,exports){
 function objTypeOf(object){
   return Object.prototype.toString.call(object).split(' ')[1].slice(0, -1);
 }
@@ -83881,7 +83340,7 @@ function formatInput(args, format, images) {
 }
 module.exports = formatInput;
 
-},{}],204:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 if (typeof window !== 'undefined') { isBrowser = true; }
 else { var isBrowser = false; }
 require('./util/getStep.js');
@@ -83892,7 +83351,6 @@ ImageSequencer = function ImageSequencer(options) {
   options = options || {};
   options.inBrowser = options.inBrowser === undefined ? isBrowser : options.inBrowser;
   options.sequencerCounter = 0;
-
   function objTypeOf(object) {
     return Object.prototype.toString.call(object).split(' ')[1].slice(0, -1);
   }
@@ -84220,7 +83678,7 @@ ImageSequencer = function ImageSequencer(options) {
 };
 module.exports = ImageSequencer;
 
-},{"./AddStep":201,"./ExportBin":202,"./FormatInput":203,"./InsertStep":205,"./Modules":206,"./ReplaceImage":207,"./Run":208,"./SavedSequences.json":210,"./Strings.js":211,"./ui/LoadImage":355,"./ui/SetInputStep":356,"./ui/UserInterface":357,"./util/createMetaModule":359,"./util/getStep.js":361,"fs":72}],205:[function(require,module,exports){
+},{"./AddStep":197,"./ExportBin":198,"./FormatInput":199,"./InsertStep":201,"./Modules":202,"./ReplaceImage":203,"./Run":204,"./SavedSequences.json":206,"./Strings.js":207,"./ui/LoadImage":351,"./ui/SetInputStep":352,"./ui/UserInterface":353,"./util/createMetaModule":355,"./util/getStep.js":357,"fs":70}],201:[function(require,module,exports){
 const getStepUtils = require('./util/getStep.js');
 
 // insert one or more steps at a given index in the sequencer
@@ -84248,7 +83706,7 @@ function InsertStep(ref, index, name, o) {
     o.selector = o_.selector || 'ismod-' + name;
     o.container = o_.container || ref.options.selector;
     o.inBrowser = ref.options.inBrowser;
-
+    o.useWasm = (ref.options.useWasm === false) ? false : true;
     if (index == -1) index = ref.steps.length;
 
     o.step = {
@@ -84289,7 +83747,7 @@ function InsertStep(ref, index, name, o) {
 }
 module.exports = InsertStep;
 
-},{"./util/getStep.js":361}],206:[function(require,module,exports){
+},{"./util/getStep.js":357}],202:[function(require,module,exports){
 /*
 * Core modules and their info files
 */
@@ -84337,7 +83795,7 @@ module.exports = {
   'white-balance': require('./modules/WhiteBalance')
 };
 
-},{"./modules/AddQR":214,"./modules/Average":217,"./modules/Blend":220,"./modules/Blur":224,"./modules/Brightness":227,"./modules/CanvasResize":230,"./modules/Channel":233,"./modules/ColorTemperature":236,"./modules/Colorbar":239,"./modules/Colormap":243,"./modules/Contrast":247,"./modules/Convolution":251,"./modules/Crop":256,"./modules/DecodeQr":259,"./modules/Dither":263,"./modules/DrawRectangle":267,"./modules/Dynamic":270,"./modules/EdgeDetect":274,"./modules/Exposure":277,"./modules/FisheyeGl":280,"./modules/FlipImage":284,"./modules/GammaCorrection":287,"./modules/Gradient":290,"./modules/GridOverlay":294,"./modules/Histogram":297,"./modules/ImportImage":301,"./modules/Ndvi":305,"./modules/NdviColormap":308,"./modules/NoiseReduction":312,"./modules/Overlay":315,"./modules/PaintBucket":319,"./modules/ReplaceColor":323,"./modules/Resize":326,"./modules/Rotate":329,"./modules/Saturation":332,"./modules/TextOverlay":336,"./modules/Threshold":340,"./modules/Tint":343,"./modules/WebglDistort":347,"./modules/WhiteBalance":350,"image-sequencer-invert":87}],207:[function(require,module,exports){
+},{"./modules/AddQR":210,"./modules/Average":213,"./modules/Blend":216,"./modules/Blur":220,"./modules/Brightness":223,"./modules/CanvasResize":226,"./modules/Channel":229,"./modules/ColorTemperature":232,"./modules/Colorbar":235,"./modules/Colormap":239,"./modules/Contrast":243,"./modules/Convolution":247,"./modules/Crop":252,"./modules/DecodeQr":255,"./modules/Dither":259,"./modules/DrawRectangle":263,"./modules/Dynamic":266,"./modules/EdgeDetect":270,"./modules/Exposure":273,"./modules/FisheyeGl":276,"./modules/FlipImage":280,"./modules/GammaCorrection":283,"./modules/Gradient":286,"./modules/GridOverlay":290,"./modules/Histogram":293,"./modules/ImportImage":297,"./modules/Ndvi":301,"./modules/NdviColormap":304,"./modules/NoiseReduction":308,"./modules/Overlay":311,"./modules/PaintBucket":315,"./modules/ReplaceColor":319,"./modules/Resize":322,"./modules/Rotate":325,"./modules/Saturation":328,"./modules/TextOverlay":332,"./modules/Threshold":336,"./modules/Tint":339,"./modules/WebglDistort":343,"./modules/WhiteBalance":346,"image-sequencer-invert":85}],203:[function(require,module,exports){
 // Uses a given image as input and replaces it with the output.
 // Works only in the browser.
 function ReplaceImage(ref, selector, steps, options) {
@@ -84402,7 +83860,7 @@ function ReplaceImage(ref, selector, steps, options) {
 
 module.exports = ReplaceImage;
 
-},{}],208:[function(require,module,exports){
+},{}],204:[function(require,module,exports){
 const getStepUtils = require('./util/getStep.js');
 
 function Run(ref, json_q, callback, ind, progressObj) {
@@ -84493,7 +83951,7 @@ function Run(ref, json_q, callback, ind, progressObj) {
 }
 module.exports = Run;
 
-},{"./RunToolkit":209,"./util/getStep.js":361}],209:[function(require,module,exports){
+},{"./RunToolkit":205,"./util/getStep.js":357}],205:[function(require,module,exports){
 const getPixels = require('get-pixels');
 const pixelManipulation = require('./modules/_nomodule/PixelManipulation');
 const lodash = require('lodash');
@@ -84508,9 +83966,9 @@ module.exports = function(input) {
   input.savePixels = savePixels;
   return input;
 };
-},{"./modules/_nomodule/PixelManipulation":352,"data-uri-to-buffer":18,"get-pixels":28,"lodash":101,"save-pixels":189}],210:[function(require,module,exports){
+},{"./modules/_nomodule/PixelManipulation":348,"data-uri-to-buffer":16,"get-pixels":26,"lodash":99,"save-pixels":186}],206:[function(require,module,exports){
 module.exports={"sample":[{"name":"invert","options":{}},{"name":"channel","options":{"channel":"red"}},{"name":"blur","options":{"blur":"5"}}]}
-},{}],211:[function(require,module,exports){
+},{}],207:[function(require,module,exports){
 module.exports = function(steps, modulesInfo, addSteps, copy) {
   // Genates a CLI string for the current sequence
   function toCliString() {
@@ -84670,7 +84128,7 @@ module.exports = function(steps, modulesInfo, addSteps, copy) {
     importJSON: importJSON
   };
 };
-},{}],212:[function(require,module,exports){
+},{}],208:[function(require,module,exports){
 module.exports = function AddQR(options, UI) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -84701,7 +84159,6 @@ module.exports = function AddQR(options, UI) {
       function output(image, datauri, mimetype) {
         step.output = { src: datauri, format: mimetype };
       }
-
       return require('../_nomodule/PixelManipulation.js')(input, {
         output: output,
         ui: options.step.ui,
@@ -84710,7 +84167,8 @@ module.exports = function AddQR(options, UI) {
         format: input.format,
         image: options.image,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
     });
 
@@ -84723,7 +84181,7 @@ module.exports = function AddQR(options, UI) {
     UI: UI
   };
 };
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./QR":213,"./info.json":215,"get-pixels":28}],213:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./QR":209,"./info.json":211,"get-pixels":26}],209:[function(require,module,exports){
 module.exports = exports = function (options, pixels, oldPixels, callback) {
   var QRCode = require('qrcode');
   QRCode.toDataURL(options.qrCodeString, function (err, url) {
@@ -84773,12 +84231,12 @@ module.exports = exports = function (options, pixels, oldPixels, callback) {
   });
 };
 
-},{"get-pixels":28,"imagejs":88,"qrcode":140}],214:[function(require,module,exports){
+},{"get-pixels":26,"imagejs":86,"qrcode":137}],210:[function(require,module,exports){
 module.exports = [
   require('./Module'),
   require('./info.json')
 ];
-},{"./Module":212,"./info.json":215}],215:[function(require,module,exports){
+},{"./Module":208,"./info.json":211}],211:[function(require,module,exports){
 module.exports={
     "name": "add-qr",
     "description": "Adds QR corresponding to the given string",
@@ -84799,7 +84257,7 @@ module.exports={
   }
   
 
-},{}],216:[function(require,module,exports){
+},{}],212:[function(require,module,exports){
 /*
 * Average all pixel colors
 */
@@ -84864,7 +84322,8 @@ module.exports = function Average(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -84876,9 +84335,9 @@ module.exports = function Average(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352}],217:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":216,"./info.json":218,"dup":214}],218:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348}],213:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":212,"./info.json":214,"dup":210}],214:[function(require,module,exports){
 module.exports={
     "name": "average",
     "description": "Average all pixel color",
@@ -84887,7 +84346,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#average-module"
 }
 
-},{}],219:[function(require,module,exports){
+},{}],215:[function(require,module,exports){
 module.exports = function Dynamic(options, UI, util) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -84952,7 +84411,8 @@ module.exports = function Dynamic(options, UI, util) {
         format: input.format,
         image: options.image,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
     });
   }
@@ -84965,9 +84425,9 @@ module.exports = function Dynamic(options, UI, util) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":221,"get-pixels":28}],220:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":219,"./info.json":221,"dup":214}],221:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":217,"get-pixels":26}],216:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":215,"./info.json":217,"dup":210}],217:[function(require,module,exports){
 module.exports={
   "name": "blend",
   "description": "Blend two chosen image steps with the given function. Defaults to using the red channel from image 1 and the green and blue and alpha channels of image 2. Easier to use interfaces coming soon!",
@@ -84986,7 +84446,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#blend-module"
 }
 
-},{}],222:[function(require,module,exports){
+},{}],218:[function(require,module,exports){
 module.exports = exports = function(pixels, blur) {
   let kernel = kernelGenerator(blur),
     pixs = {
@@ -85050,7 +84510,7 @@ module.exports = exports = function(pixels, blur) {
   }
 };
 
-},{"../_nomodule/gpuUtils":354}],223:[function(require,module,exports){
+},{"../_nomodule/gpuUtils":350}],219:[function(require,module,exports){
 /*
 * Blur an Image
 */
@@ -85086,7 +84546,8 @@ module.exports = function Blur(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85098,9 +84559,9 @@ module.exports = function Blur(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./Blur":222,"./info.json":225}],224:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":223,"./info.json":225,"dup":214}],225:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./Blur":218,"./info.json":221}],220:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":219,"./info.json":221,"dup":210}],221:[function(require,module,exports){
 module.exports={
     "name": "blur",
     "description": "Applies a Gaussian blur given by the intensity value",
@@ -85117,7 +84578,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#blur-module"
 }
 
-},{}],226:[function(require,module,exports){
+},{}],222:[function(require,module,exports){
 /*
 * Changes the Image Brightness
 */
@@ -85165,7 +84626,8 @@ module.exports = function Brightness(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85177,9 +84639,9 @@ module.exports = function Brightness(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":228}],227:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":226,"./info.json":228,"dup":214}],228:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":224}],223:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":222,"./info.json":224,"dup":210}],224:[function(require,module,exports){
 module.exports={
   "name": "brightness",
   "description": "Change the brightness of the image by given percent value",
@@ -85195,7 +84657,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#brightness-module"
 }
 
-},{}],229:[function(require,module,exports){
+},{}],225:[function(require,module,exports){
 /*
 * Changes the Canvas Size
 */
@@ -85248,7 +84710,8 @@ module.exports = function canvasResize(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85260,9 +84723,9 @@ module.exports = function canvasResize(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":231,"ndarray":107}],230:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":229,"./info.json":231,"dup":214}],231:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":227,"ndarray":105}],226:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":225,"./info.json":227,"dup":210}],227:[function(require,module,exports){
 module.exports={
     "name": "canvas-resize",
     "description": "This module resizes the canvas and overlays the ouput of the previous step at given location",
@@ -85289,7 +84752,7 @@ module.exports={
         }
     }
 }
-},{}],232:[function(require,module,exports){
+},{}],228:[function(require,module,exports){
 /*
  * Display only one color channel
  */
@@ -85328,7 +84791,8 @@ module.exports = function Channel(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85342,9 +84806,9 @@ module.exports = function Channel(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":234}],233:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":232,"./info.json":234,"dup":214}],234:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":230}],229:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":228,"./info.json":230,"dup":210}],230:[function(require,module,exports){
 module.exports={
   "name": "channel",
   "description": "Displays only one color channel of an image -- default is green",
@@ -85359,7 +84823,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#channel-module"
 }
 
-},{}],235:[function(require,module,exports){
+},{}],231:[function(require,module,exports){
 module.exports = function ColorTemperature(options, UI) {
 
   var output;
@@ -85430,7 +84894,8 @@ module.exports = function ColorTemperature(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
 
@@ -85442,13 +84907,13 @@ module.exports = function ColorTemperature(options, UI) {
   };
 
 };
-},{"../_nomodule/PixelManipulation.js":352}],236:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348}],232:[function(require,module,exports){
 module.exports = [
   require('./Module'),
   require('./info.json')
 ];
 
-},{"./Module":235,"./info.json":237}],237:[function(require,module,exports){
+},{"./Module":231,"./info.json":233}],233:[function(require,module,exports){
 module.exports={
     "name": "color-temperature",
     "description": "Changes the color temperature of the image.",
@@ -85461,7 +84926,7 @@ module.exports={
     },
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#color-temperature"
 }
-},{}],238:[function(require,module,exports){
+},{}],234:[function(require,module,exports){
 module.exports = require('../../util/createMetaModule.js')(
   function mapFunction(options) {
 
@@ -85477,9 +84942,9 @@ module.exports = require('../../util/createMetaModule.js')(
   }
 )[0];
 
-},{"../../util/createMetaModule.js":359,"./info.json":240}],239:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":238,"./info.json":240,"dup":214}],240:[function(require,module,exports){
+},{"../../util/createMetaModule.js":355,"./info.json":236}],235:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":234,"./info.json":236,"dup":210}],236:[function(require,module,exports){
 module.exports={
     "name": "colorbar",
     "description": "Generates a colorbar to lay over the image",
@@ -85514,7 +84979,7 @@ module.exports={
     "docs-link": "https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#colorbar-module"
 }
 
-},{}],241:[function(require,module,exports){
+},{}],237:[function(require,module,exports){
 /*
  * Accepts a value from 0-255 and returns the new color-mapped pixel
  * from a lookup table, which can be specified as an array of [begin, end]
@@ -85712,7 +85177,7 @@ var colormaps = {
   ])
  
 };
-},{}],242:[function(require,module,exports){
+},{}],238:[function(require,module,exports){
 module.exports = function Colormap(options, UI) {
 
   var output;
@@ -85744,7 +85209,8 @@ module.exports = function Colormap(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85757,9 +85223,9 @@ module.exports = function Colormap(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./Colormap":241}],243:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":242,"./info.json":244,"dup":214}],244:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./Colormap":237}],239:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":238,"./info.json":240,"dup":210}],240:[function(require,module,exports){
 module.exports={
   "name": "colormap",
   "description": "Maps brightness values (average of red, green & blue) to a given color lookup table, made up of a set of one more color gradients.\n\nFor example, 'cooler' colors like blue could represent low values, while 'hot' colors like red could represent high values.",
@@ -85774,7 +85240,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#colormap-module"
 }
 
-},{}],245:[function(require,module,exports){
+},{}],241:[function(require,module,exports){
 var _ = require('lodash');
 
 module.exports = exports = function(pixels, contrast) {
@@ -85822,7 +85288,7 @@ module.exports = exports = function(pixels, contrast) {
   }
   return pixels;
 };
-},{"lodash":101}],246:[function(require,module,exports){
+},{"lodash":99}],242:[function(require,module,exports){
 // /*
 // * Changes the Image Contrast
 // */
@@ -85858,7 +85324,8 @@ module.exports = function Contrast(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85870,9 +85337,9 @@ module.exports = function Contrast(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./Contrast":245,"./info.json":248}],247:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":246,"./info.json":248,"dup":214}],248:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./Contrast":241,"./info.json":244}],243:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":242,"./info.json":244,"dup":210}],244:[function(require,module,exports){
 module.exports={
     "name": "contrast",
     "description": "Change the contrast of the image by given value",
@@ -85888,7 +85355,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#contrast-module"
 }
 
-},{}],249:[function(require,module,exports){
+},{}],245:[function(require,module,exports){
 var _ = require('lodash');
 module.exports = exports = function(pixels, constantFactor, kernelValues, texMode) {
   let kernel = kernelGenerator(constantFactor, kernelValues),
@@ -85939,7 +85406,7 @@ function kernelGenerator(constantFactor, kernelValues) {
   }
   return arr;
 }
-},{"../_nomodule/gpuUtils":354,"lodash":101}],250:[function(require,module,exports){
+},{"../_nomodule/gpuUtils":350,"lodash":99}],246:[function(require,module,exports){
 module.exports = function Convolution(options, UI) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -85973,7 +85440,8 @@ module.exports = function Convolution(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -85985,9 +85453,9 @@ module.exports = function Convolution(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./Convolution":249,"./info.json":252}],251:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":250,"./info.json":252,"dup":214}],252:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./Convolution":245,"./info.json":248}],247:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":246,"./info.json":248,"dup":210}],248:[function(require,module,exports){
 module.exports={
     "name": "convolution",
     "description": "Image Convolution using a given 3x3 kernel matrix <a href='https://en.wikipedia.org/wiki/Kernel_(image_processing)'>Read more</a>",
@@ -86010,7 +85478,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#convolution-module"
 }
 
-},{}],253:[function(require,module,exports){
+},{}],249:[function(require,module,exports){
 (function (Buffer){
 module.exports = function Crop(input, options, callback) {
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -86031,7 +85499,8 @@ module.exports = function Crop(input, options, callback) {
     var iw = pixels.shape[0]; //Width of Original Image
     var ih = pixels.shape[1]; //Height of Original Image
     var backgroundArray = [];
-    backgroundColor = options.backgroundColor.split(' ');
+    backgroundColor = options.backgroundColor.substring(options.backgroundColor.indexOf('(') + 1, options.backgroundColor.length - 1); // extract only the values from rgba(_,_,_,_)
+    backgroundColor = backgroundColor.split(',');
     for(var i = 0; i < w ; i++){
       backgroundArray = backgroundArray.concat([backgroundColor[0], backgroundColor[1], backgroundColor[2], backgroundColor[3]]);
     }
@@ -86074,7 +85543,7 @@ module.exports = function Crop(input, options, callback) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"./../../util/getDefaults.js":360,"./info.json":257,"buffer":73,"get-pixels":28,"save-pixels":189}],254:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":253,"buffer":71,"get-pixels":26,"save-pixels":186}],250:[function(require,module,exports){
 /*
  * Image Cropping module
  * Usage:
@@ -86161,7 +85630,7 @@ module.exports = function CropModule(options, UI) {
   };
 };
 
-},{"../../util/ParseInputCoordinates":358,"./Crop":253,"./Ui.js":255}],255:[function(require,module,exports){
+},{"../../util/ParseInputCoordinates":354,"./Crop":249,"./Ui.js":251}],251:[function(require,module,exports){
 // hide on save
 module.exports = function CropModuleUi(step, ui) {
 
@@ -86261,9 +85730,9 @@ module.exports = function CropModuleUi(step, ui) {
   };
 };
 
-},{}],256:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":254,"./info.json":257,"dup":214}],257:[function(require,module,exports){
+},{}],252:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":250,"./info.json":253,"dup":210}],253:[function(require,module,exports){
 module.exports={
   "name": "crop",
   "description": "Crop image to given x, y, w, h in pixels or % , measured from top left",
@@ -86290,16 +85759,16 @@ module.exports={
       "default": "(50%)"
     },
     "backgroundColor": {
-      "type": "string",
-      "desc": "Background Color (Four space separated RGBA values)",
-      "default": "255 255 255 255",
-      "placeholder": "255 255 255 255"
+      "type": "text",
+      "desc": "Background Color",
+      "default": "rgba(255,255,255,255)",
+      "id": "color-picker"
     }
   },
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#crop-module"
 }
 
-},{}],258:[function(require,module,exports){
+},{}],254:[function(require,module,exports){
 /*
  * Decodes QR from a given image.
  */
@@ -86342,7 +85811,8 @@ module.exports = function DoNothing(options, UI) {
       ui: options.step.ui,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -86355,9 +85825,9 @@ module.exports = function DoNothing(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"get-pixels":28,"jsqr":100}],259:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":258,"./info.json":260,"dup":214}],260:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"get-pixels":26,"jsqr":98}],255:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":254,"./info.json":256,"dup":210}],256:[function(require,module,exports){
 module.exports={
   "name": "decode-qr",
   "description": "Search for and decode a QR code in the image",
@@ -86371,7 +85841,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#decodeqr-module"
 }
 
-},{}],261:[function(require,module,exports){
+},{}],257:[function(require,module,exports){
 module.exports = function Dither(pixels, type) {
   type = type;
   let bayerThresholdMap = [
@@ -86449,7 +85919,7 @@ module.exports = function Dither(pixels, type) {
 
 };
 
-},{}],262:[function(require,module,exports){
+},{}],258:[function(require,module,exports){
 module.exports = function Dither(options, UI) {
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
   var output;
@@ -86479,7 +85949,8 @@ module.exports = function Dither(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
   return {
@@ -86489,9 +85960,9 @@ module.exports = function Dither(options, UI) {
     UI: UI
   };
 };
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./Dither":261,"./info.json":264}],263:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":262,"./info.json":264,"dup":214}],264:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./Dither":257,"./info.json":260}],259:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":258,"./info.json":260,"dup":210}],260:[function(require,module,exports){
 module.exports={
     "name": "dither",
     "description": "Approximates a color from a mixture of other colors when the required color is not available, creating illusions of the color that is not present actually.<a href='https://en.wikipedia.org/wiki/Dither'>Read more</a>",
@@ -86507,7 +85978,7 @@ module.exports={
 }
   
 
-},{}],265:[function(require,module,exports){
+},{}],261:[function(require,module,exports){
 module.exports = exports = function(pixels, options){
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
 
@@ -86521,7 +85992,8 @@ module.exports = exports = function(pixels, options){
 	  ex =  options.endX = Number(options.endX) - thickness || iw - 1,
 	  ey = options.endY = Number(options.endY) - thickness || ih - 1,
     color = options.color || defaults.color;
-  color = color.split(' ');
+  color = color.substring(color.indexOf('(') + 1, color.length - 1); // extract only the values from rgba(_,_,_,_)
+  color = color.split(',');
 
   var drawSide = function(startX, startY, endX, endY){
     for (var n = startX; n <= endX + thickness; n++){
@@ -86529,7 +86001,7 @@ module.exports = exports = function(pixels, options){
         pixels.set(n, k, 0, color[0]);
         pixels.set(n, k, 1, color[1]);
         pixels.set(n, k, 2, color[2]);
-        pixels.set(n, k, 3, color[3]);
+        //pixels.set(n, k, 3, color[3]);
       }
     }
   };
@@ -86540,7 +86012,7 @@ module.exports = exports = function(pixels, options){
   drawSide(ox, ey, ex, ey); // Bottom
   return pixels;
 };
-},{"./../../util/getDefaults.js":360,"./info.json":268}],266:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":264}],262:[function(require,module,exports){
 module.exports = function DrawRectangle(options, UI) {
 
 
@@ -86575,7 +86047,8 @@ module.exports = function DrawRectangle(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -86587,9 +86060,9 @@ module.exports = function DrawRectangle(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./DrawRectangle":265}],267:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":266,"./info.json":268,"dup":214}],268:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./DrawRectangle":261}],263:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":262,"./info.json":264,"dup":210}],264:[function(require,module,exports){
 module.exports={
     "name": "draw-rectangle",
     "description": "It draws a rectangle on the image",
@@ -86625,15 +86098,16 @@ module.exports={
       },
 
       "color":{
-        "type": "string",
-        "desc": "RGBA values separated by a space",
-        "default": "0 0 0 255"
+        "type": "text",
+        "desc": "Select color",
+        "default": "rgba(20,20,20,1)",
+        "id": "color-picker"
       }
     },
  "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#draw-rectangle-module"
 }
 
-},{}],269:[function(require,module,exports){
+},{}],265:[function(require,module,exports){
 module.exports = function Dynamic(options, UI) {
 
   var output;
@@ -86722,7 +86196,8 @@ module.exports = function Dynamic(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -86735,9 +86210,9 @@ module.exports = function Dynamic(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352}],270:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":269,"./info.json":271,"dup":214}],271:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348}],266:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":265,"./info.json":267,"dup":210}],267:[function(require,module,exports){
 module.exports={
   "name": "dynamic",
   "description": "A module which accepts JavaScript math expressions to produce each color channel based on the original image's color. See <a href='https://publiclab.org/wiki/infragram-sandbox'>Infragrammar</a>.",
@@ -86766,7 +86241,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#dynamic-module"
 }
 
-},{}],272:[function(require,module,exports){
+},{}],268:[function(require,module,exports){
 // Define kernels for the sobel filter
 const kernelx = [
     [-1, 0, 1],
@@ -86970,7 +86445,7 @@ function hysteresis(strongEdgePixels, weakEdgePixels){
   });
 }
 
-},{}],273:[function(require,module,exports){
+},{}],269:[function(require,module,exports){
 /*
 * Detect Edges in an Image
 */
@@ -87023,7 +86498,8 @@ module.exports = function edgeDetect(options, UI) {
             format: input.format,
             image: options.image,
             inBrowser: options.inBrowser,
-            callback: callback
+            callback: callback,
+            useWasm: options.useWasm
           });
         });
       });
@@ -87038,9 +86514,9 @@ module.exports = function edgeDetect(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./EdgeUtils":272,"./info.json":275,"get-pixels":28}],274:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":273,"./info.json":275,"dup":214}],275:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./EdgeUtils":268,"./info.json":271,"get-pixels":26}],270:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":269,"./info.json":271,"dup":210}],271:[function(require,module,exports){
 module.exports={
     "name": "edge-detect",
     "description": "This module detects edges using the Canny method, which first Gaussian blurs the image to reduce noise (amount of blur configurable in settings as `options.blur`), then applies a number of steps to highlight edges, resulting in a greyscale image where the brighter the pixel, the stronger the detected edge.<a href='https://en.wikipedia.org/wiki/Canny_edge_detector'> Read more. </a>",
@@ -87079,7 +86555,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#edge-detect-module"
 }
 
-},{}],276:[function(require,module,exports){
+},{}],272:[function(require,module,exports){
 /*
 * Changes the Image Exposure
 */
@@ -87120,7 +86596,8 @@ module.exports = function Exposure(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -87132,9 +86609,9 @@ module.exports = function Exposure(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":278}],277:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":276,"./info.json":278,"dup":214}],278:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":274}],273:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":272,"./info.json":274,"dup":210}],274:[function(require,module,exports){
 module.exports={
   "name": "exposure",
   "description": "Change the exposure of the image by given exposure value",
@@ -87151,7 +86628,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md"
 }
 
-},{}],279:[function(require,module,exports){
+},{}],275:[function(require,module,exports){
 /*
 * Resolves Fisheye Effect
 */
@@ -87222,9 +86699,9 @@ module.exports = function DoNothing(options, UI) {
   };
 };
 
-},{"../_nomodule/gl-context":353,"fisheyegl":20}],280:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":279,"./info.json":281,"dup":214}],281:[function(require,module,exports){
+},{"../_nomodule/gl-context":349,"fisheyegl":18}],276:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":275,"./info.json":277,"dup":210}],277:[function(require,module,exports){
 module.exports={
   "name": "fisheye-gl",
   "description": "Correct fisheye, or barrel distortion, in images (with WebGL -- adapted from fisheye-correction-webgl by @bluemir).",
@@ -87293,7 +86770,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#fisheyegl-module"
 }
 
-},{}],282:[function(require,module,exports){
+},{}],278:[function(require,module,exports){
 /*
  * Flip the image on vertical/horizontal axis.
  */
@@ -87333,7 +86810,8 @@ module.exports = function FlipImage(options, UI) {
         format: input.format,
         image: options.image,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
     });
 
@@ -87347,7 +86825,7 @@ module.exports = function FlipImage(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./flipImage":283,"./info.json":285,"get-pixels":28}],283:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./flipImage":279,"./info.json":281,"get-pixels":26}],279:[function(require,module,exports){
 module.exports = function flipImage(oldPixels, pixels, axis) {
   var width = oldPixels.shape[0],
     height = oldPixels.shape[1];
@@ -87379,9 +86857,9 @@ module.exports = function flipImage(oldPixels, pixels, axis) {
   flip();
   return pixels;
 };
-},{}],284:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":282,"./info.json":285,"dup":214}],285:[function(require,module,exports){
+},{}],280:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":278,"./info.json":281,"dup":210}],281:[function(require,module,exports){
 module.exports={
   "name": "flip-image",
   "description": "Flip The Image On The Specified Axis.",
@@ -87396,7 +86874,7 @@ module.exports={
    "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#flipimage-module"
 }
 
-},{}],286:[function(require,module,exports){
+},{}],282:[function(require,module,exports){
 module.exports = function Gamma(options, UI) {
 
   var output;
@@ -87434,7 +86912,8 @@ module.exports = function Gamma(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -87446,9 +86925,9 @@ module.exports = function Gamma(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":288}],287:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":286,"./info.json":288,"dup":214}],288:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":284}],283:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":282,"./info.json":284,"dup":210}],284:[function(require,module,exports){
 module.exports={
     "name": "gamma-correction",
     "description": "Apply gamma correction on the image <a href='https://en.wikipedia.org/wiki/Gamma_correction'>Read more</a>",
@@ -87464,7 +86943,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#gamma-correction-module"
 }
 
-},{}],289:[function(require,module,exports){
+},{}],285:[function(require,module,exports){
 (function (Buffer){
 module.exports = function Invert(options, UI) {
 
@@ -87529,9 +87008,9 @@ module.exports = function Invert(options, UI) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":73,"get-pixels":28,"save-pixels":189}],290:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":289,"./info.json":291,"dup":214}],291:[function(require,module,exports){
+},{"buffer":71,"get-pixels":26,"save-pixels":186}],286:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":285,"./info.json":287,"dup":210}],287:[function(require,module,exports){
 module.exports={
     "name": "gradient",
     "description": "Gives a gradient of the image",
@@ -87539,21 +87018,22 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#gradient-module"
 }
 
-},{}],292:[function(require,module,exports){
+},{}],288:[function(require,module,exports){
 module.exports = exports = function(pixels, options){
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
 
   options.x = Number(options.x) || defaults.x;
   options.y = Number(options.y) || defaults.y;
   color = options.color || defaults.color;
-  color = color.split(' ');
+  color = color.substring(color.indexOf('(') + 1, color.length - 1); // extract only the values from rgba(_,_,_,_)
+  color = color.split(',');
 
   for(var x = 0; x < pixels.shape[0]; x += options.x){
     for(var y = 0 ; y < pixels.shape[1]; y++){
       pixels.set(x, y, 0, color[0]);
       pixels.set(x, y, 1, color[1]);
       pixels.set(x, y, 2, color[2]);
-      pixels.set(x, y, 3, color[3]);
+      //pixels.set(x, y, 3, color[3]);
     }
   }
     
@@ -87562,14 +87042,14 @@ module.exports = exports = function(pixels, options){
       pixels.set(x, y, 0, color[0]);
       pixels.set(x, y, 1, color[1]);
       pixels.set(x, y, 2, color[2]);
-      pixels.set(x, y, 3, color[3]);
+      //pixels.set(x, y, 3, color[3]);
     }
   }
 
   return pixels;
 };
 
-},{"./../../util/getDefaults.js":360,"./info.json":295}],293:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":291}],289:[function(require,module,exports){
 
 module.exports = function GridOverlay(options, UI) {
 
@@ -87601,7 +87081,8 @@ module.exports = function GridOverlay(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm: options.useWasm
     });
 
 
@@ -87615,9 +87096,9 @@ module.exports = function GridOverlay(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./GridOverlay":292}],294:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":293,"./info.json":295,"dup":214}],295:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./GridOverlay":288}],290:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":289,"./info.json":291,"dup":210}],291:[function(require,module,exports){
 module.exports={
     "name": "grid-overlay",
     "description": "Overlays a grid over an Image",
@@ -87634,14 +87115,16 @@ module.exports={
         },
         "color":{
             "type": "string",
-            "desc": "RGBA values separated by a space",
-            "default": "0 0 0 255"
+            "desc": "Pick color",
+            "default": "rgba(0,0,0,1)",
+            "id": "color-picker"
+
           }
     },
     "only": "browser" 
 }
 
-},{}],296:[function(require,module,exports){
+},{}],292:[function(require,module,exports){
 /*
  * Calculates the histogram of the image
  */
@@ -87724,7 +87207,8 @@ module.exports = function Channel(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -87738,12 +87222,12 @@ module.exports = function Channel(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":298}],297:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":294}],293:[function(require,module,exports){
 module.exports = [
   require('./Module.js'),
   require('./info.json')
 ];
-},{"./Module.js":296,"./info.json":298}],298:[function(require,module,exports){
+},{"./Module.js":292,"./info.json":294}],294:[function(require,module,exports){
 module.exports={
     "name": "histogram",
     "description": "Calculates the histogram for the image",
@@ -87761,7 +87245,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#histogram-module"
 }
 
-},{}],299:[function(require,module,exports){
+},{}],295:[function(require,module,exports){
 /*
  * Import Image module; this fetches a given remote or local image via URL
  * or data-url, and overwrites the current one. It saves the original as
@@ -87796,7 +87280,7 @@ module.exports = function ImportImageModule(options, UI) {
     step.metadata.input = input;
     // options.format = require('../../util/GetFormat')(options.imageUrl);
 
-    var helper = ImageSequencer({ inBrowser: options.inBrowser, ui: false });
+    var helper = ImageSequencer({ inBrowser: options.inBrowser, ui: false, useWasm: options.useWasm });
     helper.loadImages(options.imageUrl, () => {
       step.output = helper.steps[0].output;
       callback();
@@ -87811,7 +87295,7 @@ module.exports = function ImportImageModule(options, UI) {
   };
 };
 
-},{"./../../util/getDefaults.js":360,"./Ui.js":300,"./info.json":302}],300:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./Ui.js":296,"./info.json":298}],296:[function(require,module,exports){
 // hide on save
 module.exports = function ImportImageModuleUi(step, ui) {
 
@@ -87867,9 +87351,9 @@ module.exports = function ImportImageModuleUi(step, ui) {
   };
 };
 
-},{}],301:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":299,"./info.json":302,"dup":214}],302:[function(require,module,exports){
+},{}],297:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":295,"./info.json":298,"dup":210}],298:[function(require,module,exports){
 module.exports={
   "name": "import-image",
   "description": "Import a new image and replace the original with it. Future versions may enable a blend mode. Specify an image by URL or by file selector.",
@@ -87884,7 +87368,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#import-image-module"
 }
 
-},{}],303:[function(require,module,exports){
+},{}],299:[function(require,module,exports){
 /*
  * NDVI with red filter (blue channel is infrared)
  */
@@ -87933,7 +87417,8 @@ module.exports = function Ndvi(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: modifiedCallback
+      callback: modifiedCallback,
+      useWasm:options.useWasm
     });
 
   }
@@ -87946,7 +87431,7 @@ module.exports = function Ndvi(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./Ui.js":304,"./info.json":306}],304:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./Ui.js":300,"./info.json":302}],300:[function(require,module,exports){
 // hide on save
 module.exports = function CropModuleUi(step, ui) {
 
@@ -87982,9 +87467,9 @@ module.exports = function CropModuleUi(step, ui) {
   };
 };
 
-},{}],305:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":303,"./info.json":306,"dup":214}],306:[function(require,module,exports){
+},{}],301:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":299,"./info.json":302,"dup":210}],302:[function(require,module,exports){
 module.exports={
   "name": "ndvi",
   "description": "Normalized Difference Vegetation Index, or NDVI, is an image analysis technique used with aerial photography. It's a way to visualize the amounts of infrared and other wavelengths of light reflected from vegetation by comparing ratios of blue and red light absorbed versus green and IR light reflected. NDVI is used to evaluate the health of vegetation in satellite imagery, where it correlates with how much photosynthesis is happening. This is helpful in assessing vegetative health or stress. <a href='https://publiclab.org/ndvi'>Read more</a>.<br /><br/>This is designed for use with red-filtered single camera <a href='http://publiclab.org/infragram'>DIY Infragram cameras</a>; change to 'blue' for blue filters",
@@ -87999,7 +87484,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#ndvi-module"
 }
 
-},{}],307:[function(require,module,exports){
+},{}],303:[function(require,module,exports){
 /*
  * Sample Meta Module for demonstration purpose only
  */
@@ -88014,9 +87499,9 @@ module.exports = require('../../util/createMetaModule.js')(
     infoJson: require('./info.json')
   }
 )[0];
-},{"../../util/createMetaModule.js":359,"./info.json":309}],308:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":307,"./info.json":309,"dup":214}],309:[function(require,module,exports){
+},{"../../util/createMetaModule.js":355,"./info.json":305}],304:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":303,"./info.json":305,"dup":210}],305:[function(require,module,exports){
 module.exports={
     "name": "ndvi-colormap",
     "description": "Sequentially Applies NDVI and Colormap steps",
@@ -88024,7 +87509,7 @@ module.exports={
     "docs-link": "https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#ndvi-colormap-module"
 }
 
-},{}],310:[function(require,module,exports){
+},{}],306:[function(require,module,exports){
 module.exports = function NoiseReduction(options, UI) {
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
   var output;
@@ -88054,7 +87539,8 @@ module.exports = function NoiseReduction(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
   return {
@@ -88064,7 +87550,7 @@ module.exports = function NoiseReduction(options, UI) {
     UI: UI
   };
 };
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./NoiseReduction.js":311,"./info.json":313}],311:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./NoiseReduction.js":307,"./info.json":309}],307:[function(require,module,exports){
 module.exports = function Noise(pixels, method) {
   let neighbourX = [-1, -1, -1, 0, 0, 0, 1, 1, 1];
   let neighbourY = [-1, 0, 1, -1, 0, 1, -1, 0, 1];
@@ -88146,9 +87632,9 @@ module.exports = function Noise(pixels, method) {
   
   return pixels;
 };
-},{}],312:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":310,"./info.json":313,"dup":214}],313:[function(require,module,exports){
+},{}],308:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":306,"./info.json":309,"dup":210}],309:[function(require,module,exports){
 module.exports={
     "name": "Noise Reduction",
     "description": "Reduces noise from Image",
@@ -88163,7 +87649,7 @@ module.exports={
     "docs-link":""
 }
 
-},{}],314:[function(require,module,exports){
+},{}],310:[function(require,module,exports){
 module.exports = function Dynamic(options, UI, util) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -88236,7 +87722,8 @@ module.exports = function Dynamic(options, UI, util) {
         format: baseStepOutput.format,
         image: baseStepImage,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
     });
   }
@@ -88249,9 +87736,9 @@ module.exports = function Dynamic(options, UI, util) {
   };
 };
 
-},{"../../util/ParseInputCoordinates":358,"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":316,"get-pixels":28}],315:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":314,"./info.json":316,"dup":214}],316:[function(require,module,exports){
+},{"../../util/ParseInputCoordinates":354,"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":312,"get-pixels":26}],311:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":310,"./info.json":312,"dup":210}],312:[function(require,module,exports){
 module.exports={
     "name": "overlay",
     "description": "Overlays an Image over another at a given position(x,y) in pixels or in %",
@@ -88275,7 +87762,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#overlay-module"
 }
 
-},{}],317:[function(require,module,exports){
+},{}],313:[function(require,module,exports){
 module.exports = function PaintBucket(options, UI) {
 
   var output;
@@ -88306,7 +87793,8 @@ module.exports = function PaintBucket(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
 
@@ -88318,7 +87806,7 @@ module.exports = function PaintBucket(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./PaintBucket":318}],318:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./PaintBucket":314}],314:[function(require,module,exports){
 module.exports = exports = function(pixels, options) {
 
 
@@ -88342,8 +87830,9 @@ module.exports = exports = function(pixels, options) {
     tolerance = options.tolerance || defaults.tolerance,
     maxFactor = (1 + tolerance / 100),
     minFactor = (1 - tolerance / 100);
-
-  fillColor = fillColor.split(' ');
+  fillColor = fillColor.substring(fillColor.indexOf('(') + 1, fillColor.length - 1); // extract only the values from rgba(_,_,_,_)
+  fillColor = fillColor.split(',');
+    
   function isSimilar(currx, curry) {
     return (pixels.get(currx, curry, 0) >= r * minFactor && pixels.get(currx, curry, 0) <= r * maxFactor &&
       pixels.get(currx, curry, 1) >= g * minFactor && pixels.get(currx, curry, 1) <= g * maxFactor &&
@@ -88386,9 +87875,9 @@ module.exports = exports = function(pixels, options) {
   return pixels;
 };
 
-},{"./../../util/getDefaults.js":360,"./info.json":320}],319:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":317,"./info.json":320,"dup":214}],320:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":316}],315:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":313,"./info.json":316,"dup":210}],316:[function(require,module,exports){
 module.exports={
   "name": "paint-bucket",
   "description": "Fill color in pixels",
@@ -88405,9 +87894,9 @@ module.exports={
       },
       "fillColor": {
         "type": "String",
-        "desc": "four space separated numbers representing the RGBA values of fill-color",
-        "default": "100 100 100 255",
-        "placeholder": "100 100 100 255"
+        "desc": "Pick color to fill",
+        "default": "rgba(100,100,100,1)",
+        "id": "color-picker"
       },
       "tolerance": {
         "type": "range",
@@ -88421,7 +87910,7 @@ module.exports={
  "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#paint-bucket-module" 
 }
 
-},{}],321:[function(require,module,exports){
+},{}],317:[function(require,module,exports){
 module.exports = function ReplaceColor(options, UI) {
 
   var output;
@@ -88456,7 +87945,8 @@ module.exports = function ReplaceColor(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -88468,13 +87958,17 @@ module.exports = function ReplaceColor(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./ReplaceColor":322}],322:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./ReplaceColor":318}],318:[function(require,module,exports){
 module.exports = exports = function(pixels, options){
-  var color = options.color || '228 86 81';
-  var replaceColor = options.replaceColor || '0 0 255';
+  var color = options.color || 'rgb(228,86,81)';
+  color = color.substring(color.indexOf('(') + 1, color.length - 1); // extract only the values from rgba(_,_,_,_)
+
+  var replaceColor = options.replaceColor || 'rgb(0,0,255)';
+  replaceColor = replaceColor.substring(replaceColor.indexOf('(') + 1, replaceColor.length - 1); // extract only the values from rgba(_,_,_,_)
+
   var replaceMethod = options.replaceMethod || 'greyscale';
-  color = color.split(' ');
-  replaceColor = replaceColor.split(' ');
+  color = color.split(',');
+  replaceColor = replaceColor.split(',');
 
 
   var cr = color[0],
@@ -88512,9 +88006,9 @@ module.exports = exports = function(pixels, options){
   }
   return pixels;
 };
-},{}],323:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":321,"./info.json":324,"dup":214}],324:[function(require,module,exports){
+},{}],319:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":317,"./info.json":320,"dup":210}],320:[function(require,module,exports){
 module.exports={
     "name": "replace-color",
     "description": "Replace color with grey or your desired color",
@@ -88527,15 +88021,15 @@ module.exports={
       },
       "replaceColor": {
         "type": "String",
-        "desc": "three space separated numbers representing the RGB values of color to be filled",
-        "default": "0 0 255",
-        "placeholder": "0 0 255"
+        "desc": "Pick color to be filled",
+        "default": "rgb(0,0,255)",
+        "id": "color-picker"
       },
       "color": {
           "type": "String",
-          "desc": "three space separated numbers representing the RGB values of color to be replaced",
-          "default": "228 86 81",
-          "placeholder": "228 86 81"
+          "desc": "Pick color to be replaced",
+          "default": "rgb(228,86,81)",
+          "id": "color-picker"
         },
       "tolerance": {
           "type": "range",
@@ -88549,7 +88043,7 @@ module.exports={
 	"docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#replacecolor-module" 
   }
 
-},{}],325:[function(require,module,exports){
+},{}],321:[function(require,module,exports){
 /*
  * Resize the image by given percentage value
  */
@@ -88612,7 +88106,8 @@ module.exports = function Resize(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
 
@@ -88624,9 +88119,9 @@ module.exports = function Resize(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":327,"imagejs":88}],326:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":325,"./info.json":327,"dup":214}],327:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":323,"imagejs":86}],322:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":321,"./info.json":323,"dup":210}],323:[function(require,module,exports){
 module.exports={
   "name": "resize",
   "description": "Resize image by given percentage value",
@@ -88640,7 +88135,7 @@ module.exports={
   "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#resize-module"
 }
 
-},{}],328:[function(require,module,exports){
+},{}],324:[function(require,module,exports){
 /*
  * Rotates image
  */
@@ -88694,7 +88189,8 @@ module.exports = function Rotate(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
 
@@ -88706,9 +88202,9 @@ module.exports = function Rotate(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":330,"imagejs":88}],329:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":328,"./info.json":330,"dup":214}],330:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":326,"imagejs":86}],325:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":324,"./info.json":326,"dup":210}],326:[function(require,module,exports){
 module.exports={
     "name": "rotate",
     "description": "Rotates image by specified degrees",
@@ -88725,7 +88221,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#rotate-modul"
   }
 
-},{}],331:[function(require,module,exports){
+},{}],327:[function(require,module,exports){
 /*
  * Saturate an image with a value from 0 to 1
  */
@@ -88773,7 +88269,8 @@ module.exports = function Saturation(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -88787,9 +88284,9 @@ module.exports = function Saturation(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":333}],332:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":331,"./info.json":333,"dup":214}],333:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":329}],328:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":327,"./info.json":329,"dup":210}],329:[function(require,module,exports){
 module.exports={
     "name": "saturation",
     "description": "Change the saturation of the image by given value, from 0-1, with 1 being 100% saturated.",
@@ -88806,7 +88303,7 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#saturation-module"
 }
 
-},{}],334:[function(require,module,exports){
+},{}],330:[function(require,module,exports){
 
 module.exports = function TextOverlay(options, UI) {
 
@@ -88845,7 +88342,8 @@ module.exports = function TextOverlay(options, UI) {
         format: input.format,
         image: options.image,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
 
     }
@@ -88859,7 +88357,7 @@ module.exports = function TextOverlay(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./TextOverlay":335}],335:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./TextOverlay":331}],331:[function(require,module,exports){
 module.exports = exports = function(pixels, options, priorstep){
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
 
@@ -88887,9 +88385,9 @@ module.exports = exports = function(pixels, options, priorstep){
   pixels.data = myImageData.data;
   return pixels;
 };
-},{"./../../util/getDefaults.js":360,"./info.json":337}],336:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":334,"./info.json":337,"dup":214}],337:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":333}],332:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":330,"./info.json":333,"dup":210}],333:[function(require,module,exports){
 module.exports={
     "name": "text-overlay",
     "description": "Overlay text on image.",
@@ -88922,18 +88420,10 @@ module.exports={
             ]
         },
         "color": {
-            "type": "select",
+            "type": "text",
             "desc": "Select the text color.",
-            "default": "black",
-            "values": [
-                "black",
-                "blue",
-                "green",
-                "red",
-                "white",
-                "pink",
-                "orange"
-            ]
+            "default": "rgba(20,120,90,1)",
+            "id": "color-picker"
         },
         "size": {
             "type" : "integer",
@@ -88944,7 +88434,7 @@ module.exports={
     "only": "browser" 
 }
 
-},{}],338:[function(require,module,exports){
+},{}],334:[function(require,module,exports){
 /*
  * Image thresholding with 'image-filter-threshold'
  */
@@ -88980,7 +88470,8 @@ module.exports = function ImageThreshold(options, UI) {
       extraManipulation: extraManipulation,
       format: input.format,
       image: options.image,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
   return {
@@ -88991,7 +88482,7 @@ module.exports = function ImageThreshold(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./Threshold":339}],339:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./Threshold":335}],335:[function(require,module,exports){
 module.exports = function Threshold(pixels, options, histData) {
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
    
@@ -89061,9 +88552,9 @@ function otsu(histData) {
   return threshold;
 
 }
-},{"./../../util/getDefaults.js":360,"./info.json":341}],340:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":338,"./info.json":341,"dup":214}],341:[function(require,module,exports){
+},{"./../../util/getDefaults.js":356,"./info.json":337}],336:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":334,"./info.json":337,"dup":210}],337:[function(require,module,exports){
 module.exports={
   "name": "threshold",
   "description": "Thresholding is used to create binary images",
@@ -89086,7 +88577,7 @@ module.exports={
  "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#threshold"
 }
 
-},{}],342:[function(require,module,exports){
+},{}],338:[function(require,module,exports){
 module.exports = function Tint(options, UI) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -89096,7 +88587,9 @@ module.exports = function Tint(options, UI) {
   function draw(input, callback, progressObj) {
 
     var color = options.color || defaults.color;
-    color = color.split(' ');
+    color = color.substring(color.indexOf('(') + 1, color.length - 1); // extract only the values from rgba(_,_,_,_)
+    color = color.split(',');
+    
     var factor = options.factor || defaults.factor;
 
     progressObj.stop(true);
@@ -89126,7 +88619,8 @@ module.exports = function Tint(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -89138,17 +88632,18 @@ module.exports = function Tint(options, UI) {
   };
 };
 
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":344}],343:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":342,"./info.json":344,"dup":214}],344:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":340}],339:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":338,"./info.json":340,"dup":210}],340:[function(require,module,exports){
 module.exports={
   "name": "tint",
   "description": "Add color tint to an image",
   "inputs": {
       "color":{
-        "type": "String",
-        "desc": "RGB values separated by a space",
-        "default": "0 0 255"
+        "type": "text",
+        "desc": "Select color",
+        "default": "rgb(0,0,255)",
+        "id": "color-picker"
       },
       "factor": {
           "type": "range",
@@ -89162,7 +88657,7 @@ module.exports={
  "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#tint"
 }
 
-},{}],345:[function(require,module,exports){
+},{}],341:[function(require,module,exports){
 /*
 * Resolves Fisheye Effect
 */
@@ -89394,7 +88889,7 @@ module.exports = function DoNothing(options, UI) {
   };
 };
 
-},{"../../util/parseDistortCoordinates.js":362,"../_nomodule/gl-context":353,"./../../util/getDefaults.js":360,"./glfx":346,"./info.json":348}],346:[function(require,module,exports){
+},{"../../util/parseDistortCoordinates.js":358,"../_nomodule/gl-context":349,"./../../util/getDefaults.js":356,"./glfx":342,"./info.json":344}],342:[function(require,module,exports){
 /*
  * glfx.js
  * http://evanw.github.com/glfx.js/
@@ -89547,9 +89042,9 @@ module.exports = function() {
       }; return b;
     }(), s = 'float random(vec3 scale,float seed){return fract(sin(dot(gl_FragCoord.xyz+seed,scale))*43758.5453+seed);}'; return v;
 }();
-},{}],347:[function(require,module,exports){
-arguments[4][214][0].apply(exports,arguments)
-},{"./Module":345,"./info.json":348,"dup":214}],348:[function(require,module,exports){
+},{}],343:[function(require,module,exports){
+arguments[4][210][0].apply(exports,arguments)
+},{"./Module":341,"./info.json":344,"dup":210}],344:[function(require,module,exports){
 module.exports={
     "name": "webgl-distort",
     "requires": [
@@ -89580,7 +89075,7 @@ module.exports={
     },
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#webgl-distort"
 }
-},{}],349:[function(require,module,exports){
+},{}],345:[function(require,module,exports){
 module.exports = function Balance(options, UI) {
 
   var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
@@ -89628,7 +89123,8 @@ module.exports = function Balance(options, UI) {
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
   }
 
@@ -89640,9 +89136,9 @@ module.exports = function Balance(options, UI) {
   };
 
 };
-},{"../_nomodule/PixelManipulation.js":352,"./../../util/getDefaults.js":360,"./info.json":351}],350:[function(require,module,exports){
-arguments[4][236][0].apply(exports,arguments)
-},{"./Module":349,"./info.json":351,"dup":236}],351:[function(require,module,exports){
+},{"../_nomodule/PixelManipulation.js":348,"./../../util/getDefaults.js":356,"./info.json":347}],346:[function(require,module,exports){
+arguments[4][232][0].apply(exports,arguments)
+},{"./Module":345,"./info.json":347,"dup":232}],347:[function(require,module,exports){
 module.exports={
     "name": "white-balance",
     "description": "Render neutral colours correctly based on the whitest pixel in the image.",
@@ -89666,14 +89162,13 @@ module.exports={
     "docs-link":"https://github.com/publiclab/image-sequencer/blob/main/docs/MODULES.md#white-balance"
 }
 
-},{}],352:[function(require,module,exports){
-(function (process,Buffer){
+},{}],348:[function(require,module,exports){
+(function (process,Buffer,__dirname){
 /*
-* General purpose per-pixel manipulation
-* accepting a changePixel() method to remix a pixel's channels
-*/
+ * General purpose per-pixel manipulation
+ * accepting a changePixel() method to remix a pixel's channels
+ */
 module.exports = function PixelManipulation(image, options) {
-
   // To handle the case where pixelmanipulation is called on the input object itself
   // like input.pixelManipulation(options)
   if (arguments.length <= 1) {
@@ -89686,7 +89181,7 @@ module.exports = function PixelManipulation(image, options) {
   const getPixels = require('get-pixels'),
     savePixels = require('save-pixels');
 
-  getPixels(image.src, function(err, pixels) {
+  getPixels(image.src, function (err, pixels) {
     if (err) {
       console.log('Bad image path', image);
       return;
@@ -89702,75 +89197,122 @@ module.exports = function PixelManipulation(image, options) {
     // TODO: this could possibly be more efficient; see
     // https://github.com/p-v-o-s/infragram-js/blob/master/public/infragram.js#L173-L181
 
-    if (!options.inBrowser && !process.env.TEST && options.ui) {
-      try {
-        var pace = require('pace')(pixels.shape[0] * pixels.shape[1]);
-      } catch (e) {
-        options.inBrowser = true;
-      }
-    }
 
     if (options.preProcess) pixels = options.preProcess(pixels); // Allow for preprocessing
+
+    function extraOperation() {
+      var res;
+      if (options.extraManipulation) res = options.extraManipulation(pixels, generateOutput);
+      // there may be a more efficient means to encode an image object,
+      // but node modules and their documentation are essentially arcane on this point
+      function generateOutput() {
+        var chunks = [];
+        var totalLength = 0;
+
+        var r = savePixels(pixels, options.format, {
+          quality: 100
+        });
+
+        r.on('data', function (chunk) {
+          totalLength += chunk.length;
+          chunks.push(chunk);
+        });
+
+        r.on('end', function () {
+          var data = Buffer.concat(chunks, totalLength).toString('base64');
+          var datauri = 'data:image/' + options.format + ';base64,' + data;
+          if (options.output)
+            options.output(options.image, datauri, options.format);
+          if (options.callback) options.callback();
+        });
+      }
+      if (res) {
+        pixels = res;
+        generateOutput();
+      } else if (!options.extraManipulation) generateOutput();
+    }
+
+    if (!options.changePixel) extraOperation();
 
     if (options.changePixel) {
 
       /* Allows for Flexibility
        if per pixel manipulation is not required */
 
-      for (var x = 0; x < pixels.shape[0]; x++) {
-        for (var y = 0; y < pixels.shape[1]; y++) {
-          let pixel = options.changePixel(
-            pixels.get(x, y, 0),
-            pixels.get(x, y, 1),
-            pixels.get(x, y, 2),
-            pixels.get(x, y, 3),
-            x,
-            y
-          );
+      const imports = {
+        env: {
+          consoleLog: console.log,
+          perform: function (x, y) {
+            let pixel = options.changePixel(
+              pixels.get(x, y, 0),
+              pixels.get(x, y, 1),
+              pixels.get(x, y, 2),
+              pixels.get(x, y, 3),
+              x,
+              y
+            );
 
-          pixels.set(x, y, 0, pixel[0]);
-          pixels.set(x, y, 1, pixel[1]);
-          pixels.set(x, y, 2, pixel[2]);
-          pixels.set(x, y, 3, pixel[3]);
+            pixels.set(x, y, 0, pixel[0]);
+            pixels.set(x, y, 1, pixel[1]);
+            pixels.set(x, y, 2, pixel[2]);
+            pixels.set(x, y, 3, pixel[3]);
+          }
+        }
+      };
 
-          if (!options.inBrowser && !process.env.TEST && options.ui) pace.op();
+      function perPixelManipulation() { // pure JavaScript code
+        for (var x = 0; x < pixels.shape[0]; x++) {
+          for (var y = 0; y < pixels.shape[1]; y++) {
+            imports.env.perform(x, y);
+          }
         }
       }
-    }
-    // perform any extra operations on the entire array:
-    var res;
-    if (options.extraManipulation) res = options.extraManipulation(pixels, generateOutput);
-    // there may be a more efficient means to encode an image object,
-    // but node modules and their documentation are essentially arcane on this point
-    function generateOutput() {
-      var chunks = [];
-      var totalLength = 0;
 
-      var r = savePixels(pixels, options.format, { quality: 100 });
+      const inBrowser = (options.inBrowser) ? 1 : 0;
+      const test = (process.env.TEST) ? 1 : 0;
+      if (options.useWasm) {
+        if (options.inBrowser) {
 
-      r.on('data', function(chunk) {
-        totalLength += chunk.length;
-        chunks.push(chunk);
-      });
-
-      r.on('end', function() {
-        var data = Buffer.concat(chunks, totalLength).toString('base64');
-        var datauri = 'data:image/' + options.format + ';base64,' + data;
-        if (options.output)
-          options.output(options.image, datauri, options.format);
-        if (options.callback) options.callback();
-      });
+          fetch('../../../dist/manipulation.wasm').then(response =>
+            response.arrayBuffer()
+          ).then(bytes =>
+            WebAssembly.instantiate(bytes, imports)
+          ).then(results => {
+            results.instance.exports.manipulatePixel(pixels.shape[0], pixels.shape[1], inBrowser, test);
+            extraOperation();
+          }).catch(err => {
+            console.log(err);
+            console.log('WebAssembly acceleration errored; falling back to JavaScript in PixelManipulation');
+            perPixelManipulation();
+            extraOperation();
+          });
+        } else {
+          try{
+            const fs = require('fs');
+            const path = require('path');
+            const wasmPath = path.join(__dirname, '../../../', 'dist', 'manipulation.wasm');
+            const buf = fs.readFileSync(wasmPath);
+            WebAssembly.instantiate(buf, imports).then(results => {
+              results.instance.exports.manipulatePixel(pixels.shape[0], pixels.shape[1], inBrowser, test);
+              extraOperation();
+            });
+          }
+          catch(err){
+            console.log(err);
+            console.log('WebAssembly acceleration errored; falling back to JavaScript in PixelManipulation');
+            perPixelManipulation();
+            extraOperation();
+          }
+        }
+      } else {
+        perPixelManipulation();
+        extraOperation();
+      }
     }
-    if (res) {
-      pixels = res;
-      generateOutput();
-    }
-    else if (!options.extraManipulation) generateOutput();
   });
 };
-
-}).call(this,require('_process'),require("buffer").Buffer)
-},{"_process":139,"buffer":73,"get-pixels":28,"pace":116,"save-pixels":189}],353:[function(require,module,exports){
+}).call(this,require('_process'),require("buffer").Buffer,"/src/modules/_nomodule")
+},{"_process":136,"buffer":71,"fs":70,"get-pixels":26,"path":114,"save-pixels":186}],349:[function(require,module,exports){
 (function (__dirname){
 module.exports = function runInBrowserContext(input, callback, step, options) {
 
@@ -89811,7 +89353,7 @@ module.exports = function runInBrowserContext(input, callback, step, options) {
 };
 
 }).call(this,"/src/modules/_nomodule")
-},{"lodash":101,"path":117}],354:[function(require,module,exports){
+},{"lodash":99,"path":114}],350:[function(require,module,exports){
 const GPU = require('gpu.js').GPU;
 
 /**
@@ -89906,7 +89448,7 @@ module.exports = {
   convolve,
   compute
 };
-},{"gpu.js":60}],355:[function(require,module,exports){
+},{"gpu.js":58}],351:[function(require,module,exports){
 // special module to load an image into the start of the sequence; used in the HTML UI
 function LoadImage(ref, name, src, main_callback) {
   function makeImage(datauri) {
@@ -89984,7 +89526,7 @@ function LoadImage(ref, name, src, main_callback) {
 module.exports = LoadImage;
 
 
-},{"urify":197}],356:[function(require,module,exports){
+},{"urify":193}],352:[function(require,module,exports){
 // TODO: potentially move this into ImportImage module
 function setInputStepInit() {
 
@@ -90083,7 +89625,7 @@ function setInputStepInit() {
 }
 module.exports = setInputStepInit;
 
-},{}],357:[function(require,module,exports){
+},{}],353:[function(require,module,exports){
 /*
  * User Interface Handling Module
  */
@@ -90147,7 +89689,7 @@ module.exports = function UserInterface(events = {}) {
 
 };
 
-},{}],358:[function(require,module,exports){
+},{}],354:[function(require,module,exports){
 module.exports = function parseCornerCoordinateInputs(options, coord, callback) {
   var getPixels = require('get-pixels');
   getPixels(coord.src, function(err, pixels) {
@@ -90172,7 +89714,7 @@ module.exports = function parseCornerCoordinateInputs(options, coord, callback) 
     callback(options, coord);
   });
 };
-},{"get-pixels":28}],359:[function(require,module,exports){
+},{"get-pixels":26}],355:[function(require,module,exports){
 module.exports = function createMetaModule(mapFunction, moduleOptions) {
 
   moduleOptions = moduleOptions || {};
@@ -90238,7 +89780,7 @@ module.exports = function createMetaModule(mapFunction, moduleOptions) {
   return [MetaModule, moduleOptions.infoJson];
 };
 
-},{"./getDefaults.js":360}],360:[function(require,module,exports){
+},{"./getDefaults.js":356}],356:[function(require,module,exports){
 module.exports = function(info){
   var defaults = {};
   for (var key in info.inputs) {
@@ -90249,7 +89791,7 @@ module.exports = function(info){
   return defaults;
 };
 
-},{}],361:[function(require,module,exports){
+},{}],357:[function(require,module,exports){
 module.exports = {
   getPreviousStep: function() {
     return this.getStep(-1);
@@ -90299,7 +89841,7 @@ module.exports = {
     img.src = this.getInput(0).src;
   }
 };
-},{}],362:[function(require,module,exports){
+},{}],358:[function(require,module,exports){
 module.exports = function parseDistortCoordinates(options) {
 
   let coord = [];
@@ -90316,4 +89858,4 @@ module.exports = function parseDistortCoordinates(options) {
 
   return parsedCoord;
 };
-},{}]},{},[204]);
+},{}]},{},[200]);
