@@ -4,7 +4,7 @@
 module.exports = function FlipImage(options, UI) {
   options.Axis = options.Axis || require('./info.json').inputs.Axis.default;
 
-	var output,
+  var output,
     getPixels = require('get-pixels');
 
   function draw(input, callback, progressObj) {
@@ -14,12 +14,12 @@ module.exports = function FlipImage(options, UI) {
 
     var step = this;
 
-    return getPixels(input.src, function(err, oldPixels){
+    return getPixels(input.src, function(err, oldPixels) {
       function changePixel(r, g, b, a) {
         return [r, g, b, a];
       }
       function extraManipulation(pixels) {
-        if (err){
+        if (err) {
           console.log(err);
           return;
         }
@@ -28,17 +28,19 @@ module.exports = function FlipImage(options, UI) {
       function output(image, datauri, mimetype) {
         step.output = { src: datauri, format: mimetype };
       }
-      
+
       return require('../_nomodule/PixelManipulation.js')(input, {
         output: output,
+        ui: options.step.ui,
         changePixel: changePixel,
         extraManipulation: extraManipulation,
         format: input.format,
         image: options.image,
         inBrowser: options.inBrowser,
-        callback: callback
+        callback: callback,
+        useWasm:options.useWasm
       });
-    })
+    });
 
   }
 
@@ -47,5 +49,5 @@ module.exports = function FlipImage(options, UI) {
     draw: draw,
     output: output,
     UI: UI
-  }
-}
+  };
+};

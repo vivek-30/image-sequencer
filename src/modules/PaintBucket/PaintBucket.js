@@ -21,8 +21,9 @@ module.exports = exports = function(pixels, options) {
     tolerance = options.tolerance || defaults.tolerance,
     maxFactor = (1 + tolerance / 100),
     minFactor = (1 - tolerance / 100);
-
-  fillColor = fillColor.split(" ");
+  fillColor = fillColor.substring(fillColor.indexOf('(') + 1, fillColor.length - 1); // extract only the values from rgba(_,_,_,_)
+  fillColor = fillColor.split(',');
+    
   function isSimilar(currx, curry) {
     return (pixels.get(currx, curry, 0) >= r * minFactor && pixels.get(currx, curry, 0) <= r * maxFactor &&
       pixels.get(currx, curry, 1) >= g * minFactor && pixels.get(currx, curry, 1) <= g * maxFactor &&
@@ -31,19 +32,19 @@ module.exports = exports = function(pixels, options) {
   }
 
   while (queuey.length) {
-    currx = queuex.pop()
-    curry = queuey.pop()
+    currx = queuex.pop();
+    curry = queuey.pop();
 
     if (isSimilar(currx, curry)) {
-      north = south = curry
+      north = south = curry;
 
       do {
-        north -= 1
-      } while (isSimilar(currx, north) && north >= 0)
+        north -= 1;
+      } while (isSimilar(currx, north) && north >= 0);
 
       do {
-        south += 1
-      } while (isSimilar(currx, south) && south < height)
+        south += 1;
+      } while (isSimilar(currx, south) && south < height);
 
       for (n = north + 1; n < south; n += 1) {
         pixels.set(currx, n, 0, fillColor[0]);
@@ -51,16 +52,16 @@ module.exports = exports = function(pixels, options) {
         pixels.set(currx, n, 2, fillColor[2]);
         pixels.set(currx, n, 3, fillColor[3]);
         if (isSimilar(currx - 1, n)) {
-          queuex.push(currx - 1)
-          queuey.push(n)
+          queuex.push(currx - 1);
+          queuey.push(n);
         }
         if (isSimilar(currx + 1, n)) {
-          queuex.push(currx + 1)
-          queuey.push(n)
+          queuex.push(currx + 1);
+          queuey.push(n);
         }
       }
     }
   }
 
   return pixels;
-}
+};

@@ -1,9 +1,9 @@
 /*
  * Saturate an image with a value from 0 to 1
  */
-module.exports = function Saturation(options,UI) {
-  
- var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
+module.exports = function Saturation(options, UI) {
+
+  var defaults = require('./../../util/getDefaults.js')(require('./info.json'));
   var output;
 
   function draw(input, callback, progressObj) {
@@ -40,11 +40,13 @@ module.exports = function Saturation(options,UI) {
 
     return require('../_nomodule/PixelManipulation.js')(input, {
       output: output,
+      ui: options.step.ui,
       changePixel: changePixel,
       format: input.format,
       image: options.image,
       inBrowser: options.inBrowser,
-      callback: callback
+      callback: callback,
+      useWasm:options.useWasm
     });
 
   }
@@ -55,5 +57,5 @@ module.exports = function Saturation(options,UI) {
     draw: draw,
     output: output,
     UI: UI
-  }
-}
+  };
+};

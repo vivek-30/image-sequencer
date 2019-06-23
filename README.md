@@ -2,7 +2,7 @@ Image Sequencer
 ====
 
 
-[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer)
+[![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) [![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)](https://codecov.io/gh/publiclab/image-sequencer)
 
 - **Latest Stable Demo**: https://sequencer.publiclab.org
 - **Latest Beta Demo**: https://beta.sequencer.publiclab.org
@@ -59,7 +59,7 @@ A diagram of this running 5 steps on a single sample image may help explain how 
 This library conveniently works in the browser, in Node, and on the command line (CLI).
 
 ### Unix based platforms
-You can set up a local environment to test the UI with `npm run setup` followed by `npm start`.
+You can set up a local environment to test the UI with `sudo npm run setup` followed by `npm start`.
 
 ### Windows
 Our npm scripts do not support windows shells, please run the following snippet in PowerShell.
@@ -95,7 +95,7 @@ $ npm install image-sequencer -g
 ```
 $ npm run debug invert
 ```
- 
+
 ## Quick Usage
 
 ### Initializing the Sequencer
@@ -115,7 +115,7 @@ Note: Browser CORS Restrictions apply. Some browsers may not allow local images
 from other folders, and throw a Security Error instead.
 
 ```js
-  sequencer.replaceImage(selector,steps,optional_options);
+sequencer.replaceImage(selector,steps,optional_options);
 ```
 
 `optional_options` allows passing additional arguments to the module itself.
@@ -123,8 +123,8 @@ from other folders, and throw a Security Error instead.
 For example:
 
 ```js
-  sequencer.replaceImage('#photo','invert');
-  sequencer.replaceImage('#photo',['invert','ndvi-red']);
+sequencer.replaceImage('#photo','invert');
+sequencer.replaceImage('#photo',['invert','ndvi-red']);
 ```
 
 ### Data URL usage
@@ -150,7 +150,7 @@ Image Sequencer also provides a CLI for applying operations to local files. The 
 The basic format for using the CLI is as follows:
 
 ```
-    $ ./index.js -i [PATH] -s step-name
+$ ./index.js -i [PATH] -s step-name
 ```
 
 *NOTE:* On Windows you'll have to use `node index.js` instead of `./index.js`.
@@ -158,7 +158,7 @@ The basic format for using the CLI is as follows:
 The CLI also can take multiple steps at once, like so:
 
 ```
-    $ ./index.js -i [PATH] -s "step-name-1 step-name-2 ..."
+$ ./index.js -i [PATH] -s "step-name-1 step-name-2 ..."
 ```
 
 But for this, double quotes must wrap the space-separated steps.
@@ -201,15 +201,17 @@ var sequencer = ImageSequencer();
 ### Loading an Image into the Sequencer
 
 The `loadImage` method is used to load an image into the sequencer. It accepts
-a name and an image. The method also accepts an optional callback.
+an image `src`, either a URL or a data-url. The method also accepts an optional callback.
 
 ```js
-sequencer.loadImage(image_src,optional_callback);
+sequencer.loadImage(image_src, optional_callback);
 ```
+
 On `Node.js` the `image_src` may be a DataURI or a local path or a URL.
 
 On browsers, it may be a DatURI, a local image or a URL (Unless this violates
 CORS Restrictions). To sum up, these are accepted:
+
 * Images in the same domain (or directory - for a local implementation)
 * CORS-Proof images in another domain.
 * DataURLs
@@ -219,7 +221,7 @@ The callback is called within the scope of a sequencer. For example:
 (addSteps is defined later)
 
 ```js
-sequencer.loadImage('SRC',function(){
+sequencer.loadImage('SRC', function(){
   this.addSteps('module-name');
 });
 ```
@@ -241,7 +243,39 @@ If multiple images are to be added, `modules` is an array, which holds the names
 to be added, in that particular order.
 
 optional_otions is just an optional parameter, in object form, which you might
-want to provide to the modules. 
+want to provide to the modules.
+
+A variety of syntaxes are supported by Image Sequencer to add multiple steps and configurations quickly for module chaining. The project supports the string syntax, designed to be compact and URL friendly, and JSON, for handling more complex sequences. This can be achieved by passing strings to `sequencer.addStep()`:
+
+
+```js
+sequencer.addSteps('invert,channel');
+sequencer.addSteps(['invert','channel']);
+```
+
+For passing default configurations ({} is optional):
+
+```js
+sequencer.addSteps('brightness{}');
+```
+
+For passing custom configurations:
+
+```js
+sequencer.addSteps('brightness{brightness:80}');
+```
+
+For passing multiple custom configurations:
+
+```js
+sequencer.addSteps('crop{x:120|y:90}')
+```
+
+For passing multiple custom configurable modules:
+
+```js
+sequencer.addSteps('crop{x:130|y:80},brightness{brightness:80}')
+```
 
 return value: **`sequencer`** (To allow method chaining)
 
@@ -398,7 +432,7 @@ Image sequencer supports stringifying a sequence which is appended to the url an
 channel{channel:green},invert{}
 ```
 
-Sequencer also supports the use of `()` in place of `{}` for backward compatibility with older links. (This syntax is deprecated and should be avoided as far as possible)
+The use of `()` in place of `{}` for backward compatibility with older links is now **deprecated**. (There is no longer support for the following syntax, and should be avoided)
 ```
 channel(channel:green),invert()
 ```
@@ -437,7 +471,7 @@ sequencer.importJSON([
 To see this in action, please refer to line # 51 of the following:
 
 [test/core/modules/import-export.js](https://github.com/publiclab/image-sequencer/blob/main/test/core/modules/import-export.js)
- 
+
 
 
 ## Creating a User Interface
@@ -514,7 +548,7 @@ sequencer.setUI({
 
 Image Sequencer object supports one imageURL at a time.
 
-Adding a seccond image to same sequencer will result to adding same set of steps added to prior image and flushing out the previous one. 
+Adding a seccond image to same sequencer will result to adding same set of steps added to prior image and flushing out the previous one.
 
 ```js
 s1 = new ImageSequencer(...);
@@ -544,3 +578,24 @@ sequencer2.run();
 This method returns an object which defines the name and inputs of the modules. If a module name (hyphenated) is passed in the method, then only the details of that module are returned.
 
 The `notify` function takes two parameters `msg` and `id`, former being the message to be displayed on console (in case of CLI and node ) and a HTML component(in browser). The id is optional and is useful for HTML interface to give appropriate IDs.
+
+## Using WebAssembly for heavy pixel processing
+
+Any module which uses the `changePixel` function gets WebAssembly acceleration (`wasm`). Both node and browser code use WebAssembly and the only code which falls back to non-`wasm` code is the [browserified unit tests](https://github.com/publiclab/image-sequencer/blob/main/test/core/sequencer/benchmark.js).
+
+The main advantage we get using `wasm` is blazing fast speed attained in processing pixels for many modules that is very clear from [checking module benchmarks](https://travis-ci.org/publiclab/image-sequencer/jobs/544415673#L1931).
+
+
+The only limitation is that browser and node code for `wasm` had to be written separately, and switched between. This is because in browser we use `fetch` to retrieve the compiled `wasm` program while in node we use the `fs` module, each of which cannot be used in the other's environment.
+
+
+`wasm` mode is enabled by default. If you need to force this mode to be on or off, you can use the `useWasm` option when initializing ImageSequencer:
+
+```js
+let sequencer = ImageSequencer({useWasm:true}) // for wasm mode or simply
+
+let sequencer = ImageSequencer() // also for wasm mode i.e. default mode
+
+let sequencer = ImageSequencer({useWasm:false}) //for non-wasm mode 
+
+```

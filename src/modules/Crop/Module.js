@@ -22,7 +22,7 @@ module.exports = function CropModule(options, UI) {
     setupComplete = false;
 
   // This function is caled everytime the step has to be redrawn
-  function draw(input,callback) {
+  function draw(input, callback) {
 
     var step = this;
 
@@ -32,7 +32,7 @@ module.exports = function CropModule(options, UI) {
     var parseCornerCoordinateInputs = require('../../util/ParseInputCoordinates');
 
     //parse the inputs
-    parseCornerCoordinateInputs(options,{
+    parseCornerCoordinateInputs(options, {
       src: input.src,
       x: { valInp: options.x, type: 'horizontal' },
       y: { valInp: options.y, type: 'vertical' },
@@ -51,7 +51,7 @@ module.exports = function CropModule(options, UI) {
       step.output = {
         src: out,
         format: format
-      }
+      };
 
       // This output is accessible to the UI
       options.step.output = out;
@@ -81,5 +81,5 @@ module.exports = function CropModule(options, UI) {
     draw: draw,
     output: output,
     UI: UI
-  }
-}
+  };
+};

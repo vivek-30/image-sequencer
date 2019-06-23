@@ -1,19 +1,20 @@
 // Define kernels for the sobel filter
 const kernelx = [
-  [-1, 0, 1],
-  [-2, 0, 2],
-  [-1, 0, 1]
-],
-kernely = [
-  [-1,-2,-1],
-  [ 0, 0, 0],
-  [ 1, 2, 1]
-];
+    [-1, 0, 1],
+    [-2, 0, 2],
+    [-1, 0, 1]
+  ],
+  kernely = [
+    [-1, -2, -1],
+    [ 0, 0, 0],
+    [ 1, 2, 1]
+  ];
 
 let pixelsToBeSupressed = [];
 
-module.exports = function(pixels, highThresholdRatio, lowThresholdRatio, hysteresis) {
+module.exports = function(pixels, highThresholdRatio, lowThresholdRatio, useHysteresis) {
   let angles = [], grads = [], strongEdgePixels = [], weakEdgePixels = [];
+  
   for (var x = 0; x < pixels.shape[0]; x++) {
     grads.push([]);
     angles.push([]);
@@ -31,14 +32,14 @@ module.exports = function(pixels, highThresholdRatio, lowThresholdRatio, hystere
   }
   nonMaxSupress(pixels, grads, angles);
   doubleThreshold(pixels, highThresholdRatio, lowThresholdRatio, grads, strongEdgePixels, weakEdgePixels);
-  if(hysteresis.toLowerCase() == 'true') hysteresis(strongEdgePixels, weakEdgePixels);
+  if(useHysteresis.toLowerCase() == 'true') hysteresis(strongEdgePixels, weakEdgePixels);
 
   strongEdgePixels.forEach(pixel => preserve(pixels, pixel));
   weakEdgePixels.forEach(pixel => supress(pixels, pixel));
   pixelsToBeSupressed.forEach(pixel => supress(pixels, pixel));
 
   return pixels;
-}
+};
 
 
 function supress(pixels, pixel) {
@@ -68,8 +69,8 @@ function sobelFilter(pixels, x, y) {
         yn = y + b - 1;
 
       if (isOutOfBounds(pixels, xn, yn)) {
-        gradX += pixels.get(xn+1, yn+1, 0) * kernelx[a][b];
-        gradY += pixels.get(xn+1, yn+1, 0) * kernely[a][b];
+        gradX += pixels.get(xn + 1, yn + 1, 0) * kernelx[a][b];
+        gradY += pixels.get(xn + 1, yn + 1, 0) * kernely[a][b];
       }
       else {
         gradX += pixels.get(xn, yn, 0) * kernelx[a][b];
@@ -97,7 +98,7 @@ function categorizeAngle(angle){
   * 2 => NE-SW
   * 3 => N-S
   * 4 => NW-SE
-  */  
+  */
 }
 
 function isOutOfBounds(pixels, x, y){
@@ -106,9 +107,9 @@ function isOutOfBounds(pixels, x, y){
 
 const removeElem = (arr = [], elem) => {
   return arr = arr.filter((arrelem) => {
-    return arrelem !== elem; 
-  })
-}
+    return arrelem !== elem;
+  });
+};
 
 // Non Maximum Supression without interpolation
 function nonMaxSupress(pixels, grads, angles) {
@@ -119,31 +120,31 @@ function nonMaxSupress(pixels, grads, angles) {
 
       let angleCategory = categorizeAngle(angles[x][y]);
 
-      if (!isOutOfBounds(pixels, x - 1, y - 1) && !isOutOfBounds(pixels, x+1, y+1)){
+      if (!isOutOfBounds(pixels, x - 1, y - 1) && !isOutOfBounds(pixels, x + 1, y + 1)){
         switch (angleCategory){
-          case 1:
-            if (!((grads[x][y] >= grads[x][y + 1]) && (grads[x][y] >= grads[x][y - 1]))) {
-              pixelsToBeSupressed.push([x, y]);
-            }
-            break;
+        case 1:
+          if (!((grads[x][y] >= grads[x][y + 1]) && (grads[x][y] >= grads[x][y - 1]))) {
+            pixelsToBeSupressed.push([x, y]);
+          }
+          break;
           
-          case 2:
-            if (!((grads[x][y] >= grads[x + 1][y + 1]) && (grads[x][y] >= grads[x - 1][y - 1]))){
-              pixelsToBeSupressed.push([x, y]);
-            }
-            break;
+        case 2:
+          if (!((grads[x][y] >= grads[x + 1][y + 1]) && (grads[x][y] >= grads[x - 1][y - 1]))){
+            pixelsToBeSupressed.push([x, y]);
+          }
+          break;
 
-          case 3:
-            if (!((grads[x][y] >= grads[x + 1][y]) && (grads[x][y] >= grads[x - 1][y]))) {
-              pixelsToBeSupressed.push([x, y]);
-            }
-            break;
+        case 3:
+          if (!((grads[x][y] >= grads[x + 1][y]) && (grads[x][y] >= grads[x - 1][y]))) {
+            pixelsToBeSupressed.push([x, y]);
+          }
+          break;
 
-          case 4:
-            if (!((grads[x][y] >= grads[x + 1][y - 1]) && (grads[x][y] >= grads[x - 1][y + 1]))) {
-              pixelsToBeSupressed.push([x, y]);
-            }
-            break;
+        case 4:
+          if (!((grads[x][y] >= grads[x + 1][y - 1]) && (grads[x][y] >= grads[x - 1][y + 1]))) {
+            pixelsToBeSupressed.push([x, y]);
+          }
+          break;
         }
       }
     }
@@ -153,7 +154,7 @@ function nonMaxSupress(pixels, grads, angles) {
 var convertToDegrees = radians => (radians * 180) / Math.PI;
 
 // Finds the max value in a 2d array like grads
-var findMaxInMatrix = arr => Math.max(...arr.map(el => el.map(val => !!val ? val : 0)).map(el => Math.max(...el)));
+var findMaxInMatrix = arr => Math.max(...arr.map(el => el.map(val => val ? val : 0)).map(el => Math.max(...el)));
 
 // Applies the double threshold to the image
 function doubleThreshold(pixels, highThresholdRatio, lowThresholdRatio, grads, strongEdgePixels, weakEdgePixels) {
@@ -185,17 +186,17 @@ function hysteresis(strongEdgePixels, weakEdgePixels){
     let x = pixel[0],
       y = pixel[1];
 
-    if (weakEdgePixels.includes([x+1, y])) {
-      removeElem(weakEdgePixels, [x+1, y]);
-    } 
-    else if (weakEdgePixels.includes([x-1, y])) {
-      removeElem(weakEdgePixels, [x-1, y]);
+    if (weakEdgePixels.includes([x + 1, y])) {
+      removeElem(weakEdgePixels, [x + 1, y]);
     }
-    else if (weakEdgePixels.includes([x, y+1])) {
-      removeElem(weakEdgePixels, [x, y+1]);
-    } 
-    else if(weakEdgePixels.includes([x, y-1])) {
-      removeElem(weakEdgePixels, [x, y-1]);
+    else if (weakEdgePixels.includes([x - 1, y])) {
+      removeElem(weakEdgePixels, [x - 1, y]);
     }
-  })
+    else if (weakEdgePixels.includes([x, y + 1])) {
+      removeElem(weakEdgePixels, [x, y + 1]);
+    }
+    else if(weakEdgePixels.includes([x, y - 1])) {
+      removeElem(weakEdgePixels, [x, y - 1]);
+    }
+  });
 }

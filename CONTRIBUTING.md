@@ -3,6 +3,10 @@ Contributing to Image Sequencer
 
 Happily accepting pull requests; to edit the core library, modify files in `./src/`. To build, run `npm install` followed by `grunt build`.
 
+On ARM based devices, the `gl` module may require some libraries to be re-installed:
+
+`sudo apt-get install -y build-essential libxi-dev libglu1-mesa-dev libglew-dev pkg-config` -- see https://github.com/stackgl/headless-gl#ubuntudebian for more.
+
 Most contribution (we imagine) would be in the form of API-compatible modules, which need not be directly included.
 
 ## Jump To
@@ -13,6 +17,7 @@ Most contribution (we imagine) would be in the form of API-compatible modules, w
 * [Ideas](#Contribution-ideas)
 * [User Preferences](#user-preferences)
 * [Grunt Tasks](#grunt-tasks)
+* [UI Helper Methods](#ui-helper-methods)
 
 ****
 
@@ -112,7 +117,20 @@ function ModuleName(options,UI) {
       // load a standard info.json file.
       ];
 ```
+### Running a browser-only module in node
+If your module has browser specific code or you are consuming a dependency which does the `gl-context` api. We designed this api especially for webl based modules but since it runs the module in a headless browser, ti supports all browser specific APIs.
 
+The api must be used in the following format
+```js
+var step = this;
+
+    if (!options.inBrowser) {
+      require('../_nomodule/gl-context')(input, callback, step, options);
+    }
+    else {
+      /* Browser specific code */
+    }
+```
 
 ### options
 
@@ -263,6 +281,7 @@ module.exports = function ModuleName(options,UI) {
 
 The `progressObj` parameter of `draw()` is not consumed unless a custom progress bar needs to be drawn, for which this default spinner should be stopped with `progressObj.stop()` and image-sequencer is informed about the custom progress bar with `progressObj.overrideFlag = true;` following which this object can be overriden with custom progress object.
 
+
 ### Module example
 
 See existing module `channel` for an example: https://github.com/publiclab/image-sequencer/blob/main/src/modules/Channel/Module.js
@@ -390,7 +409,29 @@ The following methods are available on the returned object.
 
 
 
+## Linting
+
+We are now using `eslint` and `husky` to help lint and format our code each time we commit. Eslint defines coding standards and helps in cleaning up the code. To run eslint for checking errors globally or within a specific file run:
+
+```
+npx eslint . 
+
+npx eslint <file path>
+```
+And to fix those errors globally or in a file, run these in your terminal:
+```
+npx eslint . --fix
+
+npx eslint <file path> --fix
+```
+Be sure to not include the angular brackets(<>).
+
+Husky ensures automation of the above steps with git-hooks(eg. git add,git commit..). However we don't want to check and fix changes of the entire codebase with each commit and that the fixes made by eslint appear unstaged and require us to commit them  again and that is where lint-staged helps.
+
+If we want `husky` to not verify the commit and push it anyway, use `git commit -m "message" --no-verify.`
+
 ## Grunt Tasks
+
 This repository has different grunt tasks for different uses. The source code is in the [Gruntfile](https://github.com/publiclab/image-sequencer/blob/main/Gruntfile.js).
 
 The following command is used for running the tasks: `grunt [task-name]`. Here `[task-name]` should be replaced by the name of the task to be run. To run the default task run `grunt` without any options.
@@ -402,3 +443,56 @@ The following command is used for running the tasks: `grunt [task-name]`. Here `
 4. **serve**: Compiles the dist files as in the **compile** task and starts a local server on `localhost:3000` to host the demo site in `/examples/` directory. Also runs the **watch** task.
 5. **production**: Compiles and minifies dist files in `/dist/image-sequencer.js` and `/dist/image-sequencer-ui.js` without the `.min.js` extension to include minified files in the demo site. This script should only be used in production mode while deploying.
 6. **default**: Runs the **watch** task as default.
+
+## UI Helper Methods
+
+### scopeQuery
+
+###### Path: `/examples/lib/scopeQuery.js`
+
+The method returns a scoped `jQuery` object which only searches for elements inside a given scope (a DOM element).
+
+To use the method, 
+* import the `scopeSelector` and `scopeSelectorAll` methods from `lib/scopeQuery.js`
+* call the methods with scope as a parameter
+	
+```js
+var scopeQuery = require('./scopeQuery');
+
+var $step = scopeQuery.scopeSelector(scope),
+    $stepAll = scopeQuery.scopeSelectorAll(scope);	
+```
+This will return an object with a constructor which returns a `jQuery` object (from inside the scope) but with new `elem` and `elemAll` methods.
+
+#### Methods of the Returned Object
+* `elem()`: Selects an element inside the scope; 
+* `elemAll()`: Selects all the instances of a given element inside the scope;
+
+#### Example
+
+```js
+//The scope is a div element with id=“container“ and there are three divs in it 
+//with ids „1“, „2“, and „3“, and all of them have a „child“ class attribute
+
+var $step = require('./scopeQuery').scopeSelector(document.getElementById('container'));
+
+$step('#1'); // returns the div element with id=“1“
+$step('#1').hide().elemAll('.child').fadeOut(); // abruptly hides the div element with id=“1“ and fades out all other div elements
+```
+
+These two methods are chainable and will always return elements from inside the scope.
+
+#### Usage
+
+Instead of using
+
+```js
+$(step.ui.querySelector('query')).show().hide();
+$(step.ui.querySelectorAll('q2')).show().hide();
+```
+The following code can be used
+
+```js
+$step('query').show().hide();
+$stepAll('q2').show().hide();
+```
