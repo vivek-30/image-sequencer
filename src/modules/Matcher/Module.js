@@ -12,16 +12,10 @@ function Match(options, UI) {
     options.imageY || defaults.imageY
   ];
 
-  const res = require('matcher-core');
+  const core = require('matcher-core');
 
-  async function run() {
-    const r = await res;
-    return r;
-  }
-  run().then(function(r) {
-    points = r.points;
-  }).catch(function(e) {
-    console.error(e);
+  core(function(err, out, code){
+    points = JSON.parse(out.trim());
   });
 
   function draw(input, callback, progressObj) {
