@@ -1,4 +1,7 @@
 {
+  "src_files": [
+    "node_modules/jasmine-jquery/lib/jasmine-jquery.js"
+  ],
   "spec_dir": "test/spec",
   "spec_files": [
     "**/*.[sS]pec.js"
