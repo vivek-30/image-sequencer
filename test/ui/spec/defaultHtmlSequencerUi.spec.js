@@ -4,6 +4,10 @@ describe('Default sequencer HTML', function() {
   var sequencer = require('../../../src/ImageSequencer')();
   var defaultHtmlSequencerUi;
 
+  beforeAll(function() {
+    fixture = loadFixtures('index.html');
+  });
+
   beforeEach(()=>{
     defaultHtmlSequencerUi = new DefaultHtmlSequencerUi(sequencer);
 
@@ -42,9 +46,14 @@ describe('Default sequencer HTML', function() {
   
   it('adds a step from the quick selector', function() {
     expect($('.step').length).toBe(1);
+    expect($('.step:first img'))[0].src).not.toBeUndefined();
+    expect($('.step:first img'))[0].src).not.toBe('');
+    // needs more setup
     $("[data-value='brightness']").click()
     expect($('.step').length).toBe(2);
-    // expect($('.step:last img'))[0].src).not.toEqualTo($('.step:first img'));
+    expect($('.step:last img'))[0].src).not.toBeUndefined();
+    expect($('.step:last img'))[0].src).not.toBe('');
+    expect($('.step:last img'))[0].src).not.toEqualTo($('.step:first img')[0].src);
     // TODO: test the actual `src` attribute of $('.step:last img') against a known value
   });
 });
