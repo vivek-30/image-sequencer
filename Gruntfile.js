@@ -57,11 +57,27 @@ module.exports = function(grunt) {
         dest: 'dist/image-sequencer-ui.js'
       }
     },
+
     browserSync: {
       dev: {
         options: {
           watchTask: true,
           server: './'
+        }
+      }
+    },
+
+    
+    jasmine: {
+      imageSequencer: {
+        src: 'dist/*.js',
+        options: {
+          specs: 'test/ui/spec/*spec.js',
+          vendor: [
+            'node_modules/jquery/dist/jquery.min.js',
+            'node_modules/bootstrap/dist/js/bootstrap.min.js',
+            'node_modules/jasmine-jquery/lib/jasmine-jquery.js',
+          ] 
         }
       }
     }
