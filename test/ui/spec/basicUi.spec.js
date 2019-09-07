@@ -1,7 +1,7 @@
 describe('Default sequencer HTML', function() {
 
   beforeAll(function() {
-    jasmine.getFixtures().fixturesPath = 'test/ui/spec';
+    jasmine.getFixtures().fixturesPath = 'test/ui/spec/fixtures';
     fixture = loadFixtures('index.html');
   });
 
