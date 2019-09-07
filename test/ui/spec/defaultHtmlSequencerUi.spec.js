@@ -39,4 +39,5 @@ describe('Default sequencer HTML', function() {
   it('import options from url', function() {
     expect(defaultHtmlSequencerUi.importStepsFromUrlHash).toHaveBeenCalled();
   });
+  
 });

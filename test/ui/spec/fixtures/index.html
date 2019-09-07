@@ -1,76 +1,43 @@
 <!DOCTYPE html>
-
 <html>
-
 <head>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="content-type" content="text/html; charset=UTF8">
-  <meta name="theme-color" content="#428bca">
-  <link rel="icon" sizes="192x192" href="../icons/ic_192.png">
   <link rel="manifest" href="manifest.json">
-
-  <!--Adding meta Tag for search engine optimisation-->
-  <meta property="og:description"
-    content="A pure JavaScript sequential image processing system, inspired by storyboards. Instead of modifying the original image, it creates a new image at each step in a sequence.">
-  <meta property="og:site_name" content="sequencer.publiclab.org">
-  <meta property="og:url" content="https://sequencer.publiclab.org">
-  <meta property="og:title" content="Image Sequencer">
-  <meta name="Description"
-    content="Image Sequencer is an image editing tool that creates a new downloadble image at each step.It works in browser and supports both node and CLI.">
-  <meta name="Keywords" content="image editing downloadable browser node CLI">
 
   <title>Image Sequencer</title>
 
-  <script src="../node_modules/jquery/dist/jquery.min.js"></script>
-  <script src="../node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
-  <script src="../src/ui/prepareDynamic.js"></script>
-  <script src="../dist/image-sequencer.js" charset="utf-8"></script>
-  <script src="../dist/image-sequencer-ui.js" charset="utf-8"></script>
-  <script src="../node_modules/bootstrap-colorpicker/dist/js/bootstrap-colorpicker.js"></script>
+  <script src="../../node_modules/jquery/dist/jquery.min.js"></script>
+  <script src="../../node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
+  <script src="../../src/ui/prepareDynamic.js"></script>
+  <script src="../../dist/image-sequencer.js" charset="utf-8"></script>
+  <script src="../../dist/image-sequencer-ui.js" charset="utf-8"></script>
+  <script src="../../node_modules/bootstrap-colorpicker/dist/js/bootstrap-colorpicker.js"></script>
   <!-- for crop module: -->
-  <script src="../node_modules/imgareaselect/jquery.imgareaselect.dev.js"></script>
-  <script src="../node_modules/gifshot/dist/gifshot.min.js" type="text/javascript"></script>
+  <script src="../../node_modules/imgareaselect/jquery.imgareaselect.dev.js"></script>
+  <script src="../../node_modules/gifshot/dist/gifshot.min.js" type="text/javascript"></script>
 
   <!-- Download.js for large files -->
-  <script src="../node_modules/downloadjs/download.min.js" type="text/javascript" />
+  <script src="../../node_modules/downloadjs/download.min.js" type="text/javascript" />
 
-  <script src="lib/scrollToTop.js"></script>
-  <script src="../node_modules/selectize/dist/js/standalone/selectize.min.js"></script>
+  <script src="../../examples/lib/scrollToTop.js"></script>
+  <script src="../../node_modules/selectize/dist/js/standalone/selectize.min.js"></script>
 </head>
 
 <body>
 
-  <link href="../node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="../node_modules/bootstrap-colorpicker/dist/css/bootstrap-colorpicker.css" rel="stylesheet">
+  <link href="../../node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="../../node_modules/bootstrap-colorpicker/dist/css/bootstrap-colorpicker.css" rel="stylesheet">
 
-  <link rel="stylesheet" href="demo.css">
-  <link href="../node_modules/font-awesome/css/font-awesome.min.css" rel="stylesheet">
-  <link href="../node_modules/selectize/dist/css/selectize.default.css" rel="stylesheet">
+  <link rel="stylesheet" href="../../examples/demo.css">
+  <link href="../../node_modules/font-awesome/css/font-awesome.min.css" rel="stylesheet">
+  <link href="../../node_modules/selectize/dist/css/selectize.default.css" rel="stylesheet">
   <!-- for crop module: -->
-  <!-- for crop module: -->
-  <link href="../node_modules/imgareaselect/distfiles/css/imgareaselect-default.css" rel="stylesheet">
-  <link href="./selectize.default.css" rel="stylesheet">
-  <link rel="stylesheet" href="demo.css">
+  <link href="../../node_modules/imgareaselect/distfiles/css/imgareaselect-default.css" rel="stylesheet">
+  <link href="../../examples/selectize.default.css" rel="stylesheet">
 
   <div class="container-fluid">
-
-    <header class="text-center" style="min-width: 450px">
-      <h1><a href="/" target='_blank' class="name-header">Image Sequencer</a></h1>
-      <p>
-        A pure JavaScript sequential image processing system, inspired by storyboards. Instead of modifying the original
-        image, it
-        creates a new image at each step in a sequence.
-        <a href="https://publiclab.org/image-sequencer">Learn more</a>
-      </p>
-      <p>
-        Open Source
-        <a href="https://github.com/publiclab/image-sequencer">
-          <i class="fa fa-github"></i>
-        </a>
-        by <a href="https://publiclab.org" title="Publiclab Website"><i class="fa fa-globe"></i> Publiclab</a>
-      </p>
-    </header>
 
     <div id="dropzone" class="dropzone">
       <p>
@@ -203,26 +170,7 @@
     </div>
 
     <footer>
-      <hr style="margin:20px;">
       <center><button class="btn btn-default btn-sm" id="clear-cache">Clear offline cache</button></center>
-      <div class="row">
-        <div class="col-md-6">
-          <h2>Need Help?</h2>
-          <p>
-            <a class="btn btn-default" href="https://github.com/publiclab/image-sequencer/issues">Ask a question</a>
-            <a class="btn btn-default" href="https://publiclab.org/chat">Ask in our chatroom</a>
-          </p>
-        </div>
-        <div class="col-md-6">
-          <h2>Improve this tool</h2>
-          <p>
-            This is an open source toolkit which you can help improve on Github
-          </p>
-          <p>
-            <a class="btn btn-default" href="https://github.com/publiclab/image-sequencer">View the code &raquo;</a>
-          </p>
-        </div>
-      </div>
     </footer>
 
     <button id="move-up"><i class="fa fa-arrow-circle-o-up"></i></button>
@@ -232,7 +180,7 @@
         var sequencer;
       })
     </script>
-    <script async src="../node_modules/opencv.js/opencv.js" type="text/javascript"></script>
+    <script async src="../../node_modules/opencv.js/opencv.js" type="text/javascript"></script>
 
 </body>
 

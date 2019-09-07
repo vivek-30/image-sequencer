@@ -8,15 +8,14 @@
 // output values, step information.
 // See documetation for more details.
 
-var intermediateHtmlStepUi = require('./intermediateHtmlStepUi.js'),
+const intermediateHtmlStepUi = require('./intermediateHtmlStepUi.js'),
   urlHash = require('./urlHash.js'),
   _ = require('lodash'),
   mapHtmlTypes = require('./mapHtmltypes'),
-  scopeQuery = require('./scopeQuery'),
-  $stepAll,
-  $step;
+  scopeQuery = require('./scopeQuery');
 
 function DefaultHtmlStepUi(_sequencer, options) {
+  let $step, $stepAll;
 
   options = options || {};
   var stepsEl = options.stepsEl || document.querySelector('#steps');
@@ -74,8 +73,10 @@ function DefaultHtmlStepUi(_sequencer, options) {
 
     $step = scopeQuery.scopeSelector(step.ui);
     $stepAll = scopeQuery.scopeSelectorAll(step.ui);
+    step.ui.$step = $step;
+    step.ui.$stepAll = $stepAll;
 
-    step.linkElements = $stepAll('a');
+    step.linkElements = step.ui.querySelectorAll('a');
     step.imgElement = $step('a img.img-thumbnail')[0];
 
     if (_sequencer.modulesInfo().hasOwnProperty(step.name)) {
@@ -180,7 +181,8 @@ function DefaultHtmlStepUi(_sequencer, options) {
         $('#steps .step-container:nth-last-child(1) .insert-step').prop('disabled', true);
         if($('#steps .step-container:nth-last-child(2)'))
           $('#steps .step-container:nth-last-child(2) .insert-step').prop('disabled', false);
-      } else {
+      }
+      else {
         stepsEl.insertBefore(step.ui, $(stepsEl).children()[stepOptions.index]);
       }
     }
@@ -196,7 +198,7 @@ function DefaultHtmlStepUi(_sequencer, options) {
     $(step.imgElement).on('click', (e) => {e.preventDefault(); });
     $stepAll('#color-picker').colorpicker();
 
-    function saveOptions(e) {
+    function saveOptions(e) { // 1. SAVE OPTIONS
       e.preventDefault();
       if (optionsChanged){
         $step('div.details')
@@ -268,7 +270,7 @@ function DefaultHtmlStepUi(_sequencer, options) {
     $step('.load').hide();
 
     step.imgElement.src = (step.name == 'load-image') ? step.output.src : step.output;
-    var imgthumbnail = $step('.img-thumbnail');
+    var imgthumbnail = $step('.img-thumbnail').getDomElem();
     for (let index = 0; index < step.linkElements.length; index++) {
       if (step.linkElements[index].contains(imgthumbnail))
         step.linkElements[index].href = step.imgElement.src;
