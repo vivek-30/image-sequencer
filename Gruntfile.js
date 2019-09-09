@@ -67,17 +67,25 @@ module.exports = function(grunt) {
         }
       }
     },
-
     
     jasmine: {
-      imageSequencer: {
-        src: 'dist/*.js',
+      imagesequencer: {
+        src: 'dist/image-sequencer.js',
         options: {
           specs: 'test/ui/spec/*spec.js',
           vendor: [
             'node_modules/jquery/dist/jquery.min.js',
             'node_modules/bootstrap/dist/js/bootstrap.min.js',
             'node_modules/jasmine-jquery/lib/jasmine-jquery.js',
+            'src/ui/prepareDynamic.js',
+            'node_modules/bootstrap-colorpicker/dist/js/bootstrap-colorpicker.js',
+            'node_modules/imgareaselect/jquery.imgareaselect.dev.js',
+            'node_modules/gifshot/dist/gifshot.min.js',
+            'node_modules/downloadjs/download.min.js',
+            'examples/lib/scrollToTop.js',
+            'node_modules/selectize/dist/js/standalone/selectize.min.js',
+            'node_modules/opencv.js/opencv.js',
+            'dist/image-sequencer-ui.js'
           ] 
         }
       }

@@ -5,49 +5,14 @@ var defaultHtmlSequencerUi = require('./lib/defaultHtmlSequencerUi.js'),
   urlHash = require('./lib/urlHash.js'),
   insertPreview = require('./lib/insertPreview.js');
 
-window.onload = function () {
+initializeSequencerUi = function initializeSequencerUi() {
   sequencer = ImageSequencer();
 
-  function refreshOptions() {
-    // Load information of all modules (Name, Inputs, Outputs)
-    var modulesInfo = sequencer.modulesInfo();
-
-    var addStepSelect = $('#addStep select');
-    addStepSelect.html('');
-
-    // Add modules to the addStep dropdown
-    for (var m in modulesInfo) {
-      if (modulesInfo[m] && modulesInfo[m].name)
-        addStepSelect.append(
-          '<option value="' + m + '">' + modulesInfo[m].name + '</option>'
-        );
-    }
-    // Null option
-    addStepSelect.append('<option value="" disabled selected>Select a Module</option>');
-    addStepSelect.selectize({
-      sortField: 'text'
-    });
-  }
   refreshOptions();
 
   $(window).on('scroll', scrollFunction);
 
-  function scrollFunction() {
-    var shouldDisplay = $('body').scrollTop() > 20 || $(':root').scrollTop() > 20;
-
-    $('#move-up').css({
-      display: shouldDisplay ? 'block' : 'none'
-    });
-  }
-
-
-  function topFunction() {
-    $('body').animate({scrollTop: 0});
-    $(':root').animate({scrollTop: 0});
-  }
-
   $('#move-up').on('click', topFunction);
-
 
   // UI for each step:
   sequencer.setUI(DefaultHtmlStepUi(sequencer));
@@ -61,12 +26,6 @@ window.onload = function () {
   } else {
     sequencer.loadImage('images/tulips.png', ui.onLoad);
   }
-
-  var resetSequence = function () {
-    var r = confirm('Do you want to reset the sequence?');
-    if (r)
-      window.location = '/';
-  };
 
   $('#addStep select').on('change', ui.selectNewStepUi);
   $('#addStep #add-step-btn').on('click', ui.addStepUi);
@@ -84,24 +43,7 @@ window.onload = function () {
     $(this).removeClass('selected');
   });
 
-  function displayMessageOnSaveSequence() {
-    $('.savesequencemsg').fadeIn();
-    setTimeout(function () {
-      $('.savesequencemsg').fadeOut();
-    }, 3000);
-  }
-
   $('body').on('click', 'button.remove', ui.removeStepUi);
-  function saveSequence() { // 1. save seq
-    var result = window.prompt('Please give a name to your sequence... (Saved sequence will only be available in this browser).');
-    if (result) {
-      result = result + ' (local)';
-      sequencer.saveSequence(result, sequencer.toString()); // 1.a study saveSequence
-      sequencer.loadModules();
-      displayMessageOnSaveSequence();
-      refreshOptions();
-    }
-  }
   $('#saveButton').on('click', function () {
     // different handlers triggered for different dropdown options
 
@@ -250,3 +192,61 @@ window.onload = function () {
     insertPreview.updatePreviews('images/tulips.png', '#addStep');
   }
 };
+
+function scrollFunction() {
+  var shouldDisplay = $('body').scrollTop() > 20 || $(':root').scrollTop() > 20;
+
+  $('#move-up').css({
+    display: shouldDisplay ? 'block' : 'none'
+  });
+}
+
+function topFunction() {
+  $('body').animate({scrollTop: 0});
+  $(':root').animate({scrollTop: 0});
+}
+
+function refreshOptions() {
+  // Load information of all modules (Name, Inputs, Outputs)
+  var modulesInfo = sequencer.modulesInfo();
+
+  var addStepSelect = $('#addStep select');
+  addStepSelect.html('');
+
+  // Add modules to the addStep dropdown
+  for (var m in modulesInfo) {
+    if (modulesInfo[m] && modulesInfo[m].name)
+      addStepSelect.append(
+        '<option value="' + m + '">' + modulesInfo[m].name + '</option>'
+      );
+  }
+  // Null option
+  addStepSelect.append('<option value="" disabled selected>Select a Module</option>');
+  addStepSelect.selectize({
+    sortField: 'text'
+  });
+}
+
+var resetSequence = function () {
+  var r = confirm('Do you want to reset the sequence?');
+  if (r)
+    window.location = '/';
+};
+
+function displayMessageOnSaveSequence() {
+  $('.savesequencemsg').fadeIn();
+  setTimeout(function () {
+    $('.savesequencemsg').fadeOut();
+  }, 3000);
+}
+
+function saveSequence() { // 1. save seq
+  var result = window.prompt('Please give a name to your sequence... (Saved sequence will only be available in this browser).');
+  if (result) {
+    result = result + ' (local)';
+    sequencer.saveSequence(result, sequencer.toString()); // 1.a study saveSequence
+    sequencer.loadModules();
+    displayMessageOnSaveSequence();
+    refreshOptions();
+  }
+}

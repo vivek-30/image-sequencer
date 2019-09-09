@@ -1,7 +1,5 @@
 <!DOCTYPE html>
-
 <html>
-
 <head>
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -228,8 +226,9 @@
     <button id="move-up"><i class="fa fa-arrow-circle-o-up"></i></button>
 
     <script type="text/javascript">
+      var sequencer;
       $(function () {
-        var sequencer;
+        initializeSequencerUi();
       })
     </script>
     <script async src="../node_modules/opencv.js/opencv.js" type="text/javascript"></script>
