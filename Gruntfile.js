@@ -86,7 +86,11 @@ module.exports = function(grunt) {
             'node_modules/selectize/dist/js/standalone/selectize.min.js',
             'node_modules/opencv.js/opencv.js',
             'dist/image-sequencer-ui.js'
-          ] 
+          ],
+          keepRunner: true,
+          '--web-security' : false,
+          '--local-to-remote-url-access' : true,
+          '--ignore-ssl-errors' : true
         }
       }
     }
