@@ -1,7 +1,7 @@
 Image Sequencer
 ====
 
-
+[![Code of Conduct](https://img.shields.io/badge/code-of%20conduct-green.svg)](https://publiclab.org/conduct)
 [![Build Status](https://travis-ci.org/publiclab/image-sequencer.svg?branch=master)](https://travis-ci.org/publiclab/image-sequencer) [![Maintainability](https://api.codeclimate.com/v1/badges/5906996dd2e90aca6398/maintainability)](https://codeclimate.com/github/publiclab/image-sequencer/maintainability) [![Codecov](https://img.shields.io/codecov/c/github/publiclab/image-sequencer.svg?logo=codecov)](https://codecov.io/gh/publiclab/image-sequencer)
 
 - **Latest Stable Demo**: https://sequencer.publiclab.org
@@ -242,7 +242,7 @@ If only one module is to be added, `modules` is simply the name of the module.
 If multiple images are to be added, `modules` is an array, which holds the names of modules
 to be added, in that particular order.
 
-optional_otions is just an optional parameter, in object form, which you might
+optional_options is just an optional parameter, in object form, which you might
 want to provide to the modules.
 
 A variety of syntaxes are supported by Image Sequencer to add multiple steps and configurations quickly for module chaining. The project supports the string syntax, designed to be compact and URL friendly, and JSON, for handling more complex sequences. This can be achieved by passing strings to `sequencer.addStep()`:
