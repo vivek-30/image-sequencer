@@ -12,7 +12,7 @@ before_script:
   - ./cc-test-reporter before-build
 jobs:
   include:
-    - name: "Base tests"
+    - name: "Base istanbul/tape node tests"
       script: npm test
     - name: "Benchmark tests"
       script: npm run benchmark
@@ -22,9 +22,9 @@ jobs:
       script: grunt tests
     - name: "Core tests"
       script: npm run core-tests
-    - name: "UI tests"
+    - name: "Jasmine UI tests (mocked browser env)"
       script: npm run test-ui
-    - name: "UI jest-puppeteer tests"
+    - name: "jest-puppeteer UI tests (full browser env)"
       script: npm run test-ui-2
     - name: "Grunt build test of dev environment"
       script: grunt build
