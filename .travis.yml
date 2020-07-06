@@ -10,15 +10,24 @@ before_script:
   - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
   - chmod +x ./cc-test-reporter
   - ./cc-test-reporter before-build
-script:
-  - npm test
-  - npm run benchmark
-  - npm run gif-test
-  - grunt tests
-  - npm run core-tests
-  - npm run test-ui
-  - npm run test-ui-2
-  - grunt build
+jobs:
+  include:
+    - name: "Base tests"
+      script: npm test
+    - name: "Benchmark tests"
+      script: npm run benchmark
+    - name: "Gif tests"
+      script: npm run gif-test
+    - name: "Browserified tests"
+      script: grunt tests
+    - name: "Core tests"
+      script: npm run core-tests
+    - name: "UI tests"
+      script: npm run test-ui
+    - name: "UI jest-puppeteer tests"
+      script: npm run test-ui-2
+    - name: "Grunt build test of dev environment"
+      script: grunt build
 after_success:
   - bash <(curl -s https://codecov.io/bash)
 after_script:
