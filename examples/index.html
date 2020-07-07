@@ -42,7 +42,7 @@
   <!-- jspdf to enable save image as pdf -->
   <script src="../node_modules/jspdf/dist/jspdf.min.js" type="text/javascript" ></script>
 
-  <script src="lib/scrollToTop.js"></script>
+  <!-- <script src="lib/scrollToTop.js"></script> -->
   <script src="../node_modules/selectize/dist/js/standalone/selectize.min.js"></script>
 </head>
 
@@ -60,6 +60,8 @@
   <link href="./selectize.default.css" rel="stylesheet">
   <link rel="stylesheet" href="demo.css">
 
+  <div id="update-prompt-modal">A new version of image sequencer is available. Click <a href="#" id="reload">here</a> to update.</div>
+
   <div class="container-fluid">
 
     <header class="text-center" style="min-width: 450px">
@@ -68,7 +70,7 @@
         A pure JavaScript sequential image processing system, inspired by storyboards. Instead of modifying the original
         image, it
         creates a new image at each step in a sequence.
-        <a href="https://publiclab.org/image-sequencer">Learn more</a>
+        <a href="https://github.com/publiclab/image-sequencer/blob/main/README.md">Learn more</a>
       </p>
       <p>
         Open Source
@@ -77,6 +79,7 @@
         </a>
         by <a href="https://publiclab.org" title="Publiclab Website"><i class="fa fa-globe"></i> Publiclab</a>
       </p>
+      <span id="version-number-top-right"></span>
     </header>
 
     <div id="dropzone" class="dropzone">
@@ -231,6 +234,9 @@
             <a class="btn btn-default" href="https://github.com/publiclab/image-sequencer">View the code &raquo;</a>
           </p>
         </div>
+      </div>
+      <div class="row">
+        <p id="version-number-text">Unable to load version number</p>
       </div>
     </footer>
 
