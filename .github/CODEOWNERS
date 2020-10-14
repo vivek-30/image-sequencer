@@ -68,4 +68,6 @@
 
 /examples/ @publiclab/is-ui-maintainers
 /icons/ @publiclab/is-ui-maintainers
+/test/ui-2/test/* @publiclab/is-ui-maintainers
+/test/ui/spec/* @publiclab/is-ui-maintainers
 # <-- /SPECIFIC MAINTAINERS -->
