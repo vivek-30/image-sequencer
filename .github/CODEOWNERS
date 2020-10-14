@@ -54,6 +54,7 @@
 /src/*.js @publiclab/is-core-maintainers
 /src/*.json @publiclab/is-core-maintainers
 /src/util/ @publiclab/is-core-maintainers
+/test/core/* @publiclab/is-core-maintainers
 
 /src/modules/ @publiclab/is-module-maintainers
 /docs/ @publiclab/is-module-maintainers
