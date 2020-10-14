@@ -62,6 +62,8 @@
 /jest* @publiclab/is-tests-maintainers
 /eslint* @publiclab/is-tests-maintainers
 /travis* @publiclab/is-tests-maintainers
+.travis.yml @publiclab/is-tests-maintainers
+.gitpod* @publiclab/is-tests-maintainers
 /gitpod* @publiclab/is-tests-maintainers
 
 /examples/ @publiclab/is-ui-maintainers
