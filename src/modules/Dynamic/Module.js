@@ -14,11 +14,10 @@ module.exports = function Dynamic(options, UI) {
     options.blue = options.blue || defaults.blue;
     options.green = options.green || defaults.green;
 
+    const Parser = require('expr-eval').Parser;
     function generator(expression) {
-      var func = 'f = function (r, g, b, a) { var R = r, G = g, B = b, A = a; return ' + expression + ';}';
-      var f;
-      eval(func);
-      return f;
+      let expr = Parser.parse('var R = r, G = g, B = b, A = a; ' + expression);
+      return expr.toJSFunction("r,b,g,a");
     }
 
     var channels = ['red', 'green', 'blue', 'alpha'];
