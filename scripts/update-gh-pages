@@ -1,0 +1,78 @@
+update-demo() {
+  pushd ~/.is
+
+  if [ -d ~/.is/image-sequencer/ ];
+  then
+    rm -rf ~/.is/*
+  fi
+    echo -ne "Enter the repo (username/repo): "
+    read -e repo
+    git clone https://github.com/$repo
+
+    pushd ~/.is/image-sequencer/
+    git checkout gh-pages
+    git remote add upstream https://github.com/publiclab/image-sequencer.git
+    git fetch upstream
+    git reset --hard upstream/main
+
+    echo -e "Running setup script."
+    npm run setup
+
+    echo -e "Building dist files."
+    grunt production
+
+    if [ ! -f CNAME ];
+    then
+      echo -e "Creating CNAME"
+      touch CNAME
+    fi
+
+    echo -ne "Enter the CNAME URL(leave blank for none): "
+    read -e cnameURL
+    echo $cnameURL > CNAME
+
+    echo -e "Removing unnecessary files."
+    rm -R docs/
+    rm -R test/
+    rm CONTRIBUTING.md
+    rm index.js
+
+    echo -e "Copying important files from src/"
+    cp src/ui/prepareDynamic.js prepareDynamic.js
+
+    echo "Removing src/"
+    rm -R src/
+    mkdir -p src/ui/
+    mv prepareDynamic.js src/ui/prepareDynamic.js
+
+    echo -e "git add dist and node_modules dependencies."
+    git add .
+    git add -f node_modules/jquery/
+    git add -f node_modules/bootstrap/
+    git add -f node_modules/imgareaselect/
+    git add -f node_modules/gifshot/
+    git add -f node_modules/downloadjs/
+    git add -f node_modules/selectize/
+    git add -f node_modules/font-awesome/
+    git add -f node_modules/bootstrap-colorpicker/
+    git add -f node_modules/jspdf/
+    git add -f node_modules/opencv.js/opencv.js
+
+    git add -f dist/image-sequencer.js
+    git add -f dist/image-sequencer-ui.js
+
+    echo -e "committing and pusing."
+    git commit --no-verify -m "update"
+    git push -f
+
+    popd 
+    popd
+}
+
+if [ -d ~/.is ];
+  then
+    update-demo
+  else
+    mkdir ~/.is
+    update-demo
+  fi
