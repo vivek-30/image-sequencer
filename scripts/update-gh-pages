@@ -13,7 +13,10 @@ update-demo() {
     git checkout gh-pages
     git remote add upstream https://github.com/publiclab/image-sequencer.git
     git fetch upstream
-    git reset --hard upstream/stable
+
+    echo -ne "Enter the branch to pull from(eg. main or stable): "
+    read -e branch
+    git reset --hard upstream/$branch
 
     echo -e "Running setup script."
     npm run setup
