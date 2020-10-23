@@ -13,7 +13,7 @@ update-demo() {
     git checkout gh-pages
     git remote add upstream https://github.com/publiclab/image-sequencer.git
     git fetch upstream
-    git reset --hard upstream/main
+    git reset --hard upstream/stable
 
     echo -e "Running setup script."
     npm run setup
