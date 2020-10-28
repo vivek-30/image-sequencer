@@ -16,7 +16,7 @@ module.exports = function Dynamic(options, UI) {
 
     const Parser = require('expr-eval').Parser;
     function generator(expression) {
-      let expr = Parser.parse('var R = r, G = g, B = b, A = a; ' + expression);
+      let expr = Parser.parse('R = r; G = g; B = b; A = a; ' + expression);
       return expr.toJSFunction("r,b,g,a");
     }
 
