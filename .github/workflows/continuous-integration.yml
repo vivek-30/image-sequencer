@@ -10,6 +10,7 @@ jobs:
       with:
         node-version: '12'
         check-latest: true
+    - run: npm install
     - name: "Base istanbul/tape node tests"
       run: npm test
     - name: "Benchmark tests"
