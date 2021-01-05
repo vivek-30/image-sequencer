@@ -13,11 +13,11 @@ jobs:
     -
     - name: Install prerequisites
       run: | 
-       - sudo apt-get install g++-4.8 xvfb
-       - sudo apt-get install xserver-xorg-dev libxext-dev libxi-dev 
-       - sudo apt-get install -y build-essential libxi-dev libglu1-mesa-dev libglew-dev pkg-config libglu1-mesa-dev freeglut3-dev mesa-common-dev 
-       - export DISPLAY=':99.0' # for tape-run 
-       - Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & # for tape-run 
+       sudo apt-get install g++-4.8 xvfb
+       sudo apt-get install xserver-xorg-dev libxext-dev libxi-dev 
+       sudo apt-get install -y build-essential libxi-dev libglu1-mesa-dev libglew-dev pkg-config libglu1-mesa-dev freeglut3-dev mesa-common-dev 
+       export DISPLAY=':99.0' # for tape-run 
+       Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & # for tape-run 
     - run: npm install
     - name: "Base istanbul/tape node tests"
       run: npm test
