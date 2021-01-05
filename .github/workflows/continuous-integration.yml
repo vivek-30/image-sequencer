@@ -10,7 +10,6 @@ jobs:
       with:
         node-version: '12'
         check-latest: true
-    -
     - name: Install prerequisites
       run: | 
        sudo apt-get install g++-4.8 xvfb
