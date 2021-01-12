@@ -18,6 +18,7 @@ jobs:
        export DISPLAY=':99.0' # for tape-run 
        Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 & # for tape-run 
     - run: npm install
+    - run: npm run setup
     - name: "Base istanbul/tape node tests"
       run: npm test
     - name: "Benchmark tests"
