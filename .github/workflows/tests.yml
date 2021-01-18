@@ -99,9 +99,8 @@ jobs:
     - name: Install Dependencies
       run: npm install
     - run: sudo apt-get install xvfb
-    - run: xvfb-run --auto-servernum
     - name: "Browserify core tests and run"
-      run: grunt tests && npm run core-tests
+      run: grunt tests && xvfb-run --auto-servernum npm run core-tests
 
   jsmine-ui-tests:
     runs-on: ubuntu-18.04
