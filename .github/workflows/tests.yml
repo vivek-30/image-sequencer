@@ -1,4 +1,4 @@
-name: continuous-integration
+name: tests
 on: [pull_request]
 jobs:
   base-tests:
@@ -98,6 +98,8 @@ jobs:
           ${{ runner.os }}-
     - name: Install Dependencies
       run: npm install
+    - run: sudo apt-get install xvfb
+    - run: xvfb-run --auto-servernum
     - name: "Browserify core tests and run"
       run: grunt tests && npm run core-tests
 
