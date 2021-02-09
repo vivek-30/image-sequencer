@@ -29,24 +29,19 @@ var setupCache = function() {
                 if(navigator.serviceWorker.controller) {
                   // New service worker available; prompt the user to update.
                   showUpdateModal();
+                  $('#reload').on('click',(e) => {
+                    e.preventDefault();
+                    console.log('New Service Worker Installed Successfully');
+                    location.reload();
+                  })
                 }
                 // No updates available; do nothing.
                 break;
             }
-          });
-        });
-
-        const installingWorker = registration.installing;
-        installingWorker.onstatechange = () => {
-          console.log(installingWorker);
-          if (installingWorker.state === 'installed') {
-            location.reload();
-          }
-        };
-        console.log('Registration successful, scope is:', registration.scope);
-      })
-      .catch(function(error) {
-        console.log('Service worker registration failed, error:', error);
+          })
+        })
+      }).catch(err => {
+        console.log('Failed In Registering Service Worker: ',err);
       });
 
       /**
@@ -79,10 +74,6 @@ var setupCache = function() {
     }
     location.reload();
   });
-
-
-
-
 
 };
 
