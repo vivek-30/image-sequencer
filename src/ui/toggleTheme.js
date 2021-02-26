@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded',function() {
     document.getElementById('theme-toggler').addEventListener('change',function() {
 
+        let color,bgcolor,sepColor;
+
         document.querySelector('body').classList.toggle('dark-theme');
         document.querySelector('.name-header').classList.toggle('dark-theme');
 
@@ -16,20 +18,21 @@ document.addEventListener('DOMContentLoaded',function() {
         document.querySelector('input[type="file"]').classList.toggle('dark-theme-spec');
 
         if(document.getElementById('version-number-top-right').className.indexOf('dark-theme-spec') == -1){
-
-            document.getElementById('version-number-top-right').style.color = '#fff';
-            document.getElementById('update-prompt-modal').style.backgroundColor = '#fff';
-            document.getElementById('update-prompt-modal').style.color = '#000';
-            document.getElementById('version-number-text').style.color = '#fff';
-            document.querySelector('#move-up i').style.color = '#fff';
+            color = '#fff';
+            bgcolor = '#fff';
+            sepColor = '#000';
         }
         else{
-            document.getElementById('version-number-top-right').style.color = 'gray';
-            document.getElementById('update-prompt-modal').style.backgroundColor = '#000';
-            document.getElementById('update-prompt-modal').style.color = '#fff';
-            document.getElementById('version-number-text').style.color = 'gray';
-            document.querySelector('#move-up i').style.color = '#808080';
+            color = '#808080';
+            bgcolor = '#000';
+            sepColor = '#fff';
         }
+
+        document.getElementById('update-prompt-modal').style.backgroundColor = bgcolor;
+        document.getElementById('update-prompt-modal').style.color = sepColor;
+        document.getElementById('version-number-top-right').style.color = color;
+        document.getElementById('version-number-text').style.color = color;
+        document.querySelector('#move-up i').style.color = color;
 
         document.getElementById('version-number-top-right').classList.toggle('dark-theme-spec');
         document.getElementById('update-prompt-modal').classList.toggle('dark-theme-spec');
